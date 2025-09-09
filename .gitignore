@@ -1,2 +1,5 @@
 # Data directory
 data/
+# Logs and outputs
+logs/
+notebooks/outputs
