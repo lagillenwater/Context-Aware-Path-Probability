@@ -46,7 +46,7 @@ cd Context-Aware-Path-Probability
 
 ### Running the Initial Setup
 
-After setting up the environment, you'll need to create the hetmat data structure from Hetionet. You can do this in two ways:
+After setting up the environment, run the necessary scripts to carry out the analyses. You can do this in two ways:
 
 #### Option 1: Interactive Jupyter Notebook 
 
