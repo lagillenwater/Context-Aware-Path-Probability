@@ -13,7 +13,10 @@
 # Exit if any command fails
 set -e
 
-# Create the dwpc_rnn conda environment from environment.yml
+# Create logs directory if it doesn't exist
+mkdir -p ../logs
+
+# Create the CAPP conda environment from environment.yml
 
 ## for alpine
 module load anaconda

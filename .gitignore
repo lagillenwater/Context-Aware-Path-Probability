@@ -3,3 +3,5 @@ data/
 # Logs and outputs
 logs/
 notebooks/outputs
+# models
+models/
