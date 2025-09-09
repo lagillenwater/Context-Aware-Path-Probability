@@ -58,7 +58,7 @@ After setting up the environment, you'll need to create the hetmat data structur
 2. Navigate to the `notebooks/` directory and open 
 
 3. Run Notebooks in order:
-    - `0_create-hetmat.ipynb`  
+    - [`0_create-hetmat.ipynb`](notebooks/0_create-hetmat.ipynb)  
 
 
 #### Option 2: Shell Script (For batch processing or HPC environments)
@@ -72,3 +72,5 @@ After setting up the environment, you'll need to create the hetmat data structur
    ```bash
    bash 0_create_hetmat.sh
    ```
+
+   **Script:** [`scripts/0_create_hetmat.sh`](scripts/0_create_hetmat.sh)
