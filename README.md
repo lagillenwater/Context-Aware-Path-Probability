@@ -42,3 +42,33 @@ cd Context-Aware-Path-Probability
    conda activate CAPP
    ```
 
+## Getting Started
+
+### Running the Initial Setup
+
+After setting up the environment, you'll need to create the hetmat data structure from Hetionet. You can do this in two ways:
+
+#### Option 1: Interactive Jupyter Notebook 
+
+1. Start JupyterLab:
+   ```bash
+   jupyter lab
+   ```
+
+2. Navigate to the `notebooks/` directory and open 
+
+3. Run Notebooks in order:
+    - `0_create-hetmat.ipynb`  
+
+
+#### Option 2: Shell Script (For batch processing or HPC environments)
+
+1. Navigate to the scripts directory:
+   ```bash
+   cd scripts
+   ```
+
+2. Run scripts in order:
+   ```bash
+   bash 0_create_hetmat.sh
+   ```
