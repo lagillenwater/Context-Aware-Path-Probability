@@ -64,13 +64,8 @@ After setting up the environment, you'll need to create the hetmat data structur
 #### Option 2: Shell Script (For batch processing or HPC environments)
 
 1. Navigate to the scripts directory:
-   ```bash
-   cd scripts
-   ```
 
 2. Run scripts in order:
    ```bash
    bash 0_create_hetmat.sh
    ```
-
-   **Script:** [`scripts/0_create_hetmat.sh`](scripts/0_create_hetmat.sh)
