@@ -30,8 +30,19 @@ mkdir -p $jobs_dir
 
 echo "****** Generating SLURM job scripts for learning null edge predictions ******"
 
-# Define edge types and their corresponding node types
-declare -A edge_types=(
+# Configuration: Set TEST_MODE=true for testing with limited edge types and permutations
+TEST_MODE=true  # Change to false for full production run
+
+if [ "$TEST_MODE" = true ]; then
+    echo "*** RUNNING IN TEST MODE ***"
+    echo "Limited to 3 edge types and 2 permutations for testing"
+else
+    echo "*** RUNNING IN PRODUCTION MODE ***" 
+    echo "Processing all edge types and permutations"
+fi
+
+# Define all edge types and their corresponding node types
+declare -A all_edge_types=(
     ["AdG"]="Anatomy,Gene"
     ["AeG"]="Anatomy,Gene"
     ["AuG"]="Anatomy,Gene"
@@ -57,6 +68,34 @@ declare -A edge_types=(
     ["Gr>G"]="Gene,Gene"
     ["PCiC"]="Pharmacologic Class,Compound"
 )
+
+# Configure edge types and permutations based on test mode
+if [ "$TEST_MODE" = true ]; then
+    # Test mode: Use only 3 representative edge types
+    declare -A edge_types=(
+        ["AeG"]="Anatomy,Gene"
+        ["CbG"]="Compound,Gene" 
+        ["DaG"]="Disease,Gene"
+    )
+    # Test mode: Use only permutations 0-1
+    permutation_range="0 1"
+    echo "Test configuration:"
+    echo "  Edge types: ${!edge_types[*]}"
+    echo "  Permutations: $permutation_range"
+else
+    # Production mode: Use all edge types
+    declare -A edge_types=()
+    for key in "${!all_edge_types[@]}"; do
+        edge_types["$key"]="${all_edge_types[$key]}"
+    done
+    # Production mode: Use all permutations 0-10
+    permutation_range=$(seq 0 10)
+    echo "Production configuration:"
+    echo "  Edge types: ${#edge_types[@]} total (${!edge_types[*]})"
+    echo "  Permutations: 0-10 (11 total)"
+fi
+
+echo "Total jobs to create: $(($(echo $permutation_range | wc -w) * ${#edge_types[@]}))"
 
 # Function to create individual SLURM job script for learning null edge prediction
 create_null_learning_job() {
@@ -128,10 +167,10 @@ EOF
     echo "Created job script: $job_script"
 }
 
-# Generate individual job scripts for permutations 0-10 and all edge types
-echo "Generating job scripts for all permutations and edge types..."
+# Generate individual job scripts for configured permutations and edge types
+echo "Generating job scripts for configured permutations and edge types..."
 
-for permutation_num in {0..10}; do
+for permutation_num in $permutation_range; do
     echo "Processing permutation ${permutation_num}..."
     
     for edge_type in "${!edge_types[@]}"; do
@@ -144,16 +183,16 @@ done
 echo ""
 echo "Job script generation completed!"
 echo "Generated scripts for:"
-echo "  - Permutations: 0-10 (11 total)"
-echo "  - Edge types: ${#edge_types[@]} total"
-echo "  - Total jobs: $((11 * ${#edge_types[@]}))"
+echo "  - Permutations: $(echo $permutation_range | wc -w) total ($(echo $permutation_range))"
+echo "  - Edge types: ${#edge_types[@]} total (${!edge_types[*]})"
+echo "  - Total jobs: $(($(echo $permutation_range | wc -w) * ${#edge_types[@]}))"
 
 # Automatically submit all jobs
 echo ""
 echo "Submitting all null learning jobs..."
 JOB_IDS=()
 
-for permutation_num in {0..10}; do
+for permutation_num in $permutation_range; do
     echo "Submitting jobs for permutation ${permutation_num}..."
     
     for edge_type in "${!edge_types[@]}"; do
@@ -174,3 +213,12 @@ echo "Cancel all jobs with: scancel ${JOB_IDS[@]}"
 echo ""
 echo "Check job progress in logs: ${logs_dir}/output_null_learning_*"
 echo "Models will be saved to: ${BASE_DIR}/models/"
+
+if [ "$TEST_MODE" = true ]; then
+    echo ""
+    echo "*** TEST MODE COMPLETED ***"
+    echo "To run full production mode:"
+    echo "  1. Edit this script and set TEST_MODE=false"
+    echo "  2. Re-run: sbatch 3_learn_permutation_nulls.sh"
+    echo "  3. This will process all 24 edge types across 11 permutations (264 total jobs)"
+fi
