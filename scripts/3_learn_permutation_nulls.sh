@@ -18,7 +18,7 @@ set -e
 
 # Get the directory of this script and define base paths relative to it
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-BASE_DIR=$(realpath "$SCRIPT_DIR/..")
+BASE_DIR=$(realpath "$SLURM_SUBMIT_DIR/..")
 JOBS_DIR="${BASE_DIR}/slurm_jobs"
 LOGS_DIR="${BASE_DIR}/logs"
 

@@ -3,5 +3,7 @@ data/
 # Logs and outputs
 logs/
 notebooks/outputs
+# slurm jobs
+scripts/permutation_jobs
 # models
 models/

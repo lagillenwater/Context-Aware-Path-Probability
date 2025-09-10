@@ -43,8 +43,8 @@ conda activate dwpc_rnn
 
 echo "****** Downloading Hetionet null graphs ******"
 
-input_notebook=${notebooks_path}/3_download_null_graphs.ipynb
-output_notebook=${notebooks_path}/outputs/3_download_null_graphs_output.ipynb
+input_notebook=${notebooks_path}/2_download_null_graphs.ipynb
+output_notebook=${notebooks_path}/outputs/2_download_null_graphs_output.ipynb
 
 # Create outputs directory if it doesn't exist
 mkdir -p "${notebooks_path}/outputs"

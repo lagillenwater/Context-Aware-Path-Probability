@@ -4,7 +4,7 @@
 #SBATCH --account=amc-general
 #SBATCH --output=../logs/output_create_permutations.log
 #SBATCH --error=../logs/error_create_permutations.log
-#SBATCH --time=01:00:00
+#SBATCH --time=00:30:00
 #SBATCH --partition=amilan
 #SBATCH --qos=normal
 #SBATCH --ntasks-per-node=4
@@ -26,6 +26,8 @@ data_path="${BASE_DIR}/data"
 logs_dir="${BASE_DIR}/logs"
 jobs_dir="${BASE_DIR}/scripts/permutation_jobs"
 
+# make jobs directory
+mkdir -p $jobs_dir
 
 echo "****** Generating SLURM job scripts for permutations ******"
 
@@ -39,8 +41,8 @@ create_permutation_job() {
 
 #SBATCH --job-name=perm_${perm_num}
 #SBATCH --account=amc-general
-#SBATCH --output=../../logs/output_permutation_${perm_num}.log
-#SBATCH --error=../../logs/error_permutation_${perm_num}.log
+#SBATCH --output=../logs/output_permutation_${perm_num}.log
+#SBATCH --error=../logs/error_permutation_${perm_num}.log
 #SBATCH --time=01:00:00
 #SBATCH --partition=amilan
 #SBATCH --ntasks-per-node=12
@@ -58,7 +60,7 @@ echo "Job ID: \$SLURM_JOB_ID"
 # Load conda environment
 module load anaconda
 conda deactivate
-conda activate dwpc_rnn
+conda activate CAPP
 
 # Define paths
 notebooks_path="${notebooks_path}"
