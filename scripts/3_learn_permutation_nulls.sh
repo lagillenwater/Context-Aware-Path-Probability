@@ -1,199 +1,176 @@
-#!/usr/bin/sh
+#!/bin/sh
 
-#SBATCH --job-name=3_generate_edge_pred_jobs
+#SBATCH --job-name=learn_nulls
 #SBATCH --account=amc-general
-#SBATCH --output=../logs/output_download_null_graphs.log
-#SBATCH --error=../logs/error_download_null_graphs.log
+#SBATCH --output=../logs/output_learn_permutation_nulls.log
+#SBATCH --error=../logs/error_learn_permutation_nulls.log
 #SBATCH --time=01:00:00
 #SBATCH --partition=amilan
 #SBATCH --qos=normal
 #SBATCH --ntasks-per-node=4
-#SBATCH --nodes=1
-#SBATCH --mem=8G
+#SBATCH --nodes=1 
 
-# Script to generate individual SLURM jobs for each edge type of each permuted network
+# Master script to generate individual SLURM job scripts for learning null edge predictions
+# This allows for distributed processing across multiple HPC nodes for each edge type and permutation
 
 # Exit if any command fails
 set -e
 
-# Get the directory of this script and define base paths relative to it
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 BASE_DIR=$(realpath "$SLURM_SUBMIT_DIR/..")
-JOBS_DIR="${BASE_DIR}/slurm_jobs"
-LOGS_DIR="${BASE_DIR}/logs"
 
-# Create directories if they don't exist
-mkdir -p "$JOBS_DIR"
-mkdir -p "$LOGS_DIR"
+# Get the directory of this script and define base paths relative to it
+notebooks_path="${BASE_DIR}/notebooks"
+data_path="${BASE_DIR}/data"
+logs_dir="${BASE_DIR}/logs"
+jobs_dir="${BASE_DIR}/scripts/null_learning_jobs"
 
-echo "Generating SLURM jobs for edge prediction..."
-echo "Base directory: $BASE_DIR"
-echo "Jobs will be created in: $JOBS_DIR"
-echo "Logs will be written to: $LOGS_DIR"
+# make jobs directory
+mkdir -p $jobs_dir
 
-# Define edge type to node type mappings based on metagraph.json
-declare -A ALL_EDGE_MAPPINGS=(
-    # Anatomy edges
-    ["AdG"]="Anatomy:Gene"
-    ["AeG"]="Anatomy:Gene"
-    ["AuG"]="Anatomy:Gene"
-    
-    # Compound edges
-    ["CbG"]="Compound:Gene"
-    ["CcSE"]="Compound:Side Effect"
-    ["CdG"]="Compound:Gene"
-    ["CpD"]="Compound:Disease"
-    ["CrC"]="Compound:Compound"
-    ["CtD"]="Compound:Disease"
-    ["CuG"]="Compound:Gene"
-    
-    # Disease edges
-    ["DaG"]="Disease:Gene"
-    ["DdG"]="Disease:Gene"
-    ["DlA"]="Disease:Anatomy"
-    ["DpS"]="Disease:Symptom"
-    ["DrD"]="Disease:Disease"
-    ["DuG"]="Disease:Gene"
-    
-    # Gene edges
-    ["GcG"]="Gene:Gene"
-    ["GiG"]="Gene:Gene"
-    ["GpBP"]="Gene:Biological Process"
-    ["GpCC"]="Gene:Cellular Component"
-    ["GpMF"]="Gene:Molecular Function"
-    ["GpPW"]="Gene:Pathway"
-    ["Gr>G"]="Gene:Gene"
-    
-    # Pharmacologic Class edges
-    ["PCiC"]="Pharmacologic Class:Compound"
+echo "****** Generating SLURM job scripts for learning null edge predictions ******"
+
+# Define edge types and their corresponding node types
+declare -A edge_types=(
+    ["AdG"]="Anatomy,Gene"
+    ["AeG"]="Anatomy,Gene"
+    ["AuG"]="Anatomy,Gene"
+    ["CbG"]="Compound,Gene"
+    ["CcSE"]="Compound,Side Effect"
+    ["CdG"]="Compound,Gene"
+    ["CpD"]="Compound,Disease"
+    ["CrC"]="Compound,Compound"
+    ["CtD"]="Compound,Disease"
+    ["CuG"]="Compound,Gene"
+    ["DaG"]="Disease,Gene"
+    ["DdG"]="Disease,Gene"
+    ["DlA"]="Disease,Anatomy"
+    ["DpS"]="Disease,Symptom"
+    ["DrD"]="Disease,Disease"
+    ["DuG"]="Disease,Gene"
+    ["GcG"]="Gene,Gene"
+    ["GiG"]="Gene,Gene"
+    ["GpBP"]="Gene,Biological Process"
+    ["GpCC"]="Gene,Cellular Component"
+    ["GpMF"]="Gene,Molecular Function"
+    ["GpPW"]="Gene,Pathway"
+    ["Gr>G"]="Gene,Gene"
+    ["PCiC"]="Pharmacologic Class,Compound"
 )
 
-# For testing, limit to just 3 edge types
-# To use all edge types, change the line below to: declare -A EDGE_MAPPINGS=("${ALL_EDGE_MAPPINGS[@]}")
-declare -A EDGE_MAPPINGS=(
-    ["AeG"]="Anatomy:Gene"
-    ["CbG"]="Compound:Gene"
-    ["DaG"]="Disease:Gene"
-)
-
-# Get all available permutations
-PERMUTATIONS_DIR="${BASE_DIR}/data/permutations"
-ALL_PERMUTATIONS=($(find "$PERMUTATIONS_DIR" -name "*.hetmat" -type d -exec basename {} \; | sort))
-
-# For testing, limit to first 2 permutations
-# To use all permutations, change the line below to: PERMUTATIONS=("${ALL_PERMUTATIONS[@]}")
-PERMUTATIONS=("${ALL_PERMUTATIONS[@]:0:2}")
-
-echo "Found ${#ALL_PERMUTATIONS[@]} total permutations: ${ALL_PERMUTATIONS[*]}"
-echo "Testing with ${#PERMUTATIONS[@]} permutations: ${PERMUTATIONS[*]}"
-echo "Found ${#ALL_EDGE_MAPPINGS[@]} total edge types, testing with ${#EDGE_MAPPINGS[@]}: ${!EDGE_MAPPINGS[*]}"
-
-# Generate SLURM job scripts for each combination
-TOTAL_JOBS=0
-SUBMITTED_JOBS=0
-
-for permutation in "${PERMUTATIONS[@]}"; do
-    echo "Processing permutation: $permutation"
+# Function to create individual SLURM job script for learning null edge prediction
+create_null_learning_job() {
+    local perm_num=$1
+    local edge_type=$2
+    local node_types=$3
+    local source_node_type=$(echo $node_types | cut -d',' -f1)
+    local target_node_type=$(echo $node_types | cut -d',' -f2)
+    local job_script="${jobs_dir}/null_learning_${perm_num}_${edge_type}.sh"
     
-    for edge_type in "${!EDGE_MAPPINGS[@]}"; do
-        # Parse source and target node types
-        IFS=':' read -r source_type target_type <<< "${EDGE_MAPPINGS[$edge_type]}"
-        
-        # Create job name
-        JOB_NAME="edge_pred_${permutation}_${edge_type}"
-        
-        # Define file paths
-        JOB_SCRIPT="${JOBS_DIR}/${JOB_NAME}.sbatch"
-        OUTPUT_LOG="${LOGS_DIR}/output_${JOB_NAME}.log"
-        ERROR_LOG="${LOGS_DIR}/error_${JOB_NAME}.log"
-        
-        # Create SLURM job script
-        cat > "$JOB_SCRIPT" << EOF
-#!/bin/bash
+    cat > "$job_script" << EOF
+#!/bin/sh
 
-#SBATCH --job-name=${JOB_NAME}
+#SBATCH --job-name=null_${perm_num}_${edge_type}
 #SBATCH --account=amc-general
-#SBATCH --output=${OUTPUT_LOG}
-#SBATCH --error=${ERROR_LOG}
-#SBATCH --time=01:00:00
+#SBATCH --output=../logs/output_null_learning_${perm_num}_${edge_type}.log
+#SBATCH --error=../logs/error_null_learning_${perm_num}_${edge_type}.log
+#SBATCH --time=02:00:00
 #SBATCH --partition=amilan
+#SBATCH --ntasks-per-node=12
 #SBATCH --qos=normal
-#SBATCH --ntasks-per-node=1
 #SBATCH --nodes=1
-#SBATCH --mem=32G
-#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
 
 # Exit if any command fails
 set -e
 
-# Change to the base directory
-cd "${BASE_DIR}"
-
-# Create outputs directory if it doesn't exist
-mkdir -p "notebooks/outputs"
+echo "Starting null edge learning for permutation ${perm_num}, edge type ${edge_type} at \$(date)"
+echo "Running on node: \$SLURM_NODELIST"
+echo "Job ID: \$SLURM_JOB_ID"
+echo "Edge type: ${edge_type} (${source_node_type} -> ${target_node_type})"
 
 # Load conda environment
 module load anaconda
 conda deactivate
 conda activate CAPP
 
-echo "=========================================="
-echo "Starting edge prediction job"
-echo "Permutation: ${permutation}"
-echo "Edge Type: ${edge_type}"
-echo "Source Node Type: ${source_type}"
-echo "Target Node Type: ${target_type}"
-echo "Job started at: \$(date)"
-echo "Working directory: \$(pwd)"
-echo "=========================================="
+# Define paths
+notebooks_path="${notebooks_path}"
+input_notebook="\${notebooks_path}/3_learn_null_edge.ipynb"
+output_notebook="\${notebooks_path}/outputs/null_learning_notebooks/3_learn_null_edge_output_${perm_num}_${edge_type}.ipynb"
 
-# Run the edge prediction notebook using papermill
-papermill notebooks/3_learn_null_edge.ipynb \\
-    notebooks/outputs/3_learn_null_edge_${permutation}_${edge_type}_output.ipynb \\
-    -p permutations_subdirectory "permutations" \\
-    -p permutation_name "${permutation}" \\
-    -p output_dir "models" \\
+echo "Input notebook: \$input_notebook"
+echo "Output notebook: \$output_notebook"
+echo "Permutation number: ${perm_num}"
+echo "Edge type: ${edge_type}"
+echo "Source node type: ${source_node_type}"
+echo "Target node type: ${target_node_type}"
+
+# Create output directory if it doesn't exist
+mkdir -p "\${notebooks_path}/outputs/null_learning_notebooks"
+echo "Created output directory: \${notebooks_path}/outputs/null_learning_notebooks"
+
+# Run papermill with the required parameters
+echo "Starting papermill execution..."
+papermill "\$input_notebook" "\$output_notebook" \\
+    -p permutation_name "${perm_num}" \\
     -p edge_type "${edge_type}" \\
-    -p source_node_type "${source_type}" \\
-    -p target_node_type "${target_type}"
+    -p source_node_type "${source_node_type}" \\
+    -p target_node_type "${target_node_type}" \\
+    -p permutations_subdirectory "permutations" \\
+    -p output_dir "models"
 
-echo "=========================================="
-echo "Edge prediction notebook completed successfully"
-echo "Job finished at: \$(date)"
-echo "=========================================="
+echo "Null edge learning for permutation ${perm_num}, edge type ${edge_type} completed successfully at \$(date)"
 EOF
 
-        chmod +x "$JOB_SCRIPT"
-        ((TOTAL_JOBS++))
-        
-        echo "  Created job script: $JOB_SCRIPT"
-        
-        # Submit the job immediately
-        JOB_ID=$(sbatch "$JOB_SCRIPT" | awk '{print $4}')
-        if [ $? -eq 0 ]; then
-            ((SUBMITTED_JOBS++))
-            echo "  Submitted job: $JOB_ID"
-        else
-            echo "  ERROR: Failed to submit job: $JOB_SCRIPT"
-        fi
+    # Make the job script executable
+    chmod +x "$job_script"
+    echo "Created job script: $job_script"
+}
+
+# Generate individual job scripts for permutations 0-10 and all edge types
+echo "Generating job scripts for all permutations and edge types..."
+
+for permutation_num in {0..10}; do
+    echo "Processing permutation ${permutation_num}..."
+    
+    for edge_type in "${!edge_types[@]}"; do
+        node_types="${edge_types[$edge_type]}"
+        echo "  Creating job for edge type: ${edge_type} (${node_types})"
+        create_null_learning_job $permutation_num $edge_type $node_types
     done
 done
 
 echo ""
-echo "=========================================="
-echo "TEST RUN - Job generation and submission completed!"
-echo "Total jobs created: $TOTAL_JOBS"
-echo "Total jobs submitted: $SUBMITTED_JOBS"
-echo "Jobs directory: $JOBS_DIR"
-echo "Note: This was a test run with only ${#PERMUTATIONS[@]} permutations and ${#EDGE_MAPPINGS[@]} edge types"
-echo "To run all permutations and edge types, modify the arrays in the script"
-echo "=========================================="
+echo "Job script generation completed!"
+echo "Generated scripts for:"
+echo "  - Permutations: 0-10 (11 total)"
+echo "  - Edge types: ${#edge_types[@]} total"
+echo "  - Total jobs: $((11 * ${#edge_types[@]}))"
+
+# Automatically submit all jobs
 echo ""
-echo "To check job status:"
-echo "  squeue -u \$USER"
+echo "Submitting all null learning jobs..."
+JOB_IDS=()
+
+for permutation_num in {0..10}; do
+    echo "Submitting jobs for permutation ${permutation_num}..."
+    
+    for edge_type in "${!edge_types[@]}"; do
+        job_script="${jobs_dir}/null_learning_${permutation_num}_${edge_type}.sh"
+        echo "  Submitting ${edge_type}..."
+        job_id=$(sbatch --parsable "$job_script")
+        JOB_IDS+=($job_id)
+        echo "    Job ID: $job_id"
+    done
+done
+
 echo ""
-echo "To monitor job outputs:"
-echo "  tail -f $LOGS_DIR/output_*.log"
+echo "All jobs submitted! Total jobs: ${#JOB_IDS[@]}"
+echo "Job IDs: ${JOB_IDS[@]}"
 echo ""
-echo "To cancel all jobs:"
-echo "  scancel -u \$USER"
+echo "Monitor job status with: squeue -u \$USER"
+echo "Cancel all jobs with: scancel ${JOB_IDS[@]}"
+echo ""
+echo "Check job progress in logs: ${logs_dir}/output_null_learning_*"
+echo "Models will be saved to: ${BASE_DIR}/models/"
