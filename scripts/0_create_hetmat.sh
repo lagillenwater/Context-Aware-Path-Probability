@@ -31,12 +31,10 @@ conda activate dwpc_rnn
 
 echo "****** downloading and creating hetmat agecencies******"
 
-
 input_notebook=${notebooks_path}/0_create-hetmat.ipynb
 output_notebook=${notebooks_path}/0_create-hetmat.ipynb
 
 papermill "$input_notebook" "$output_notebook" 
-
 
 # Deactivate the virtual environment w/ conda
 conda deactivate
