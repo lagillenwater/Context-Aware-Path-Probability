@@ -88,7 +88,7 @@ EOF
 }
 
 # Generate individual job scripts for permutations 0-10
-for permutation_num in {0..10}; do
+for permutation_num in {11..50}; do
     create_permutation_job $permutation_num
 done
 
@@ -97,7 +97,7 @@ done
 echo "Submitting all permutation jobs..."
 JOB_IDS=()
 
-for permutation_num in {0..10}; do
+for permutation_num in {11..50}; do
     job_script="${jobs_dir}/permutation_${permutation_num}.sh"
     echo "Submitting permutation ${permutation_num}..."
     job_id=$(sbatch --parsable "$job_script")
