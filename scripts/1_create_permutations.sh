@@ -43,7 +43,7 @@ create_permutation_job() {
 #SBATCH --account=amc-general
 #SBATCH --output=../logs/output_permutation_${perm_num}.log
 #SBATCH --error=../logs/error_permutation_${perm_num}.log
-#SBATCH --time=01:00:00
+#SBATCH --time=00:30:00
 #SBATCH --partition=amilan
 #SBATCH --ntasks-per-node=12
 #SBATCH --qos=normal
