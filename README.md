@@ -58,7 +58,8 @@ After setting up the environment, run the necessary scripts to carry out the ana
 2. Navigate to the `notebooks/` directory and open 
 
 3. Run Notebooks in order:
-    - [`0_create-hetmat.ipynb`](notebooks/0_create-hetmat.ipynb)  
+    - [`0_create-hetmat.ipynb`](notebooks/0_create-hetmat.ipynb)
+    - ['1_generate-permutations.ipynb'](notebooks/1_generate-permutations.ipynb)  
 
 
 #### Option 2: Shell Script (For batch processing or HPC environments)
@@ -68,4 +69,5 @@ After setting up the environment, run the necessary scripts to carry out the ana
 2. Run scripts in order:
    ```bash
    bash 0_create_hetmat.sh
+   bash 1_create_permutations.sh
    ```
