@@ -131,3 +131,5 @@ notebooks/outputs
 scripts/permutation_jobs
 # models
 models/
+# results
+results/
