@@ -183,7 +183,7 @@ def representative_negative_sampling(edges_matrix, degrees, positive_edges, n_sa
     
     negative_edges = []
     attempts = 0
-    max_attempts = min(n_samples * 2, 50000)  # Much more aggressive limit for speed
+    max_attempts = min(n_samples * 2)  # Much more aggressive limit for speed
     
     if method == 'degree_matched':
         # FAST BATCH APPROACH: Generate many candidates at once instead of one-by-one

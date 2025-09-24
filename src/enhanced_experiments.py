@@ -3,6 +3,7 @@ Enhanced experiment functions for stable Neural Network training and edge predic
 Contains the improved NN training logic with proper seed control and multiple initialization averaging.
 """
 
+from networkx import edges
 import numpy as np
 import torch
 import torch.nn as nn
@@ -206,18 +207,41 @@ def run_enhanced_experiment(sample_size, run_id, edges, degrees_dict, verbose=Fa
     if verbose:
         print(f"  Enhanced Experiment Run {run_id+1}: Sample size {sample_size}")
     
-    # Create dataset with proper seed control
-    n_positive = sample_size // 2
-    n_negative = sample_size // 2
+    # For a sparse matrix, positive edges are the nonzero entries
+    positive_edges = np.array(list(zip(*edges.nonzero())))
+# Negative edges are the zero entries (can be very large, so sample if needed)
+
+    all_indices = set((i, j) for i in range(edges.shape[0]) for j in range(edges.shape[1]))
+    positive_set = set(map(tuple, positive_edges))
+    negative_edges = np.array(list(all_indices - positive_set))
+    # # Find all positive and negative edges (not a representative sample)
+    # positive_edges = np.array([e for e, label in edges.items() if label == 1])
+    # negative_edges = np.array([e for e, label in edges.items() if label == 0])
+
+    # Combine all edges and labels
+    all_edges = np.concatenate([positive_edges, negative_edges])
+    all_labels = np.concatenate([np.ones(len(positive_edges)), np.zeros(len(negative_edges))])
+
+    # Extract features for all edges
+    X_exp = []
+    for edge in all_edges:
+        # Example: use degrees as features; adjust as needed for your feature extraction
+        u, v = edge
+        X_exp.append([degrees_dict.get(u, 0), degrees_dict.get(v, 0)])
+    X_exp = np.array(X_exp)
+    y_exp = all_labels
+    # # Create dataset with proper seed control
+    # n_positive = sample_size 
+    # n_negative = sample_size
     
-    X_exp, y_exp, _ = create_representative_dataset(
-        edges, degrees_dict,
-        n_positive=n_positive,
-        n_negative=n_negative,
-        pos_method='stratified',
-        neg_method='degree_matched',
-        random_state=42 + run_id
-    )
+    # X_exp, y_exp, _ = create_representative_dataset(
+    #     edges, degrees_dict,
+    #     n_positive=n_positive,
+    #     n_negative=n_negative,
+    #     pos_method='stratified',
+    #     neg_method='degree_matched',
+    #     random_state=42 + run_id
+    # )
     
     # Split into train/test
     X_train, X_test, y_train, y_test = train_test_split(

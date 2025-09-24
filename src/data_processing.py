@@ -153,8 +153,8 @@ def load_permutation_data(permutation_name, permutations_dir, edge_type="AeG", s
         raise FileNotFoundError(f"{source_node_type} nodes file not found: {source_path}")
     
     source_nodes = pd.read_csv(source_path, sep='\t')
-    print(f"Loaded {source_node_type} nodes: {len(source_nodes)} nodes")
-    print(f"{source_node_type} columns: {list(source_nodes.columns)}")
+    # print(f"Loaded {source_node_type} nodes: {len(source_nodes)} nodes")
+    # print(f"{source_node_type} columns: {list(source_nodes.columns)}")
     
     # Load target nodes
     target_path = nodes_dir / f'{target_node_type}.tsv'
@@ -162,8 +162,8 @@ def load_permutation_data(permutation_name, permutations_dir, edge_type="AeG", s
         raise FileNotFoundError(f"{target_node_type} nodes file not found: {target_path}")
     
     target_nodes = pd.read_csv(target_path, sep='\t')
-    print(f"Loaded {target_node_type} nodes: {len(target_nodes)} nodes")
-    print(f"{target_node_type} columns: {list(target_nodes.columns)}")
+    # print(f"Loaded {target_node_type} nodes: {len(target_nodes)} nodes")
+    # print(f"{target_node_type} columns: {list(target_nodes.columns)}")
     
     return {
         'edges': edges,
