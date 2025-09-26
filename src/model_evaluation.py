@@ -673,6 +673,280 @@ class ModelEvaluator:
 
         print("\n" + "="*80)
 
+    def get_total_edges_from_file(self, edge_file_path: str) -> int:
+        """
+        Load edge matrix and return total number of edges.
+
+        Parameters:
+        -----------
+        edge_file_path : str
+            Path to the sparse edge matrix file
+
+        Returns:
+        --------
+        int
+            Total number of edges in the matrix
+        """
+        import scipy.sparse as sp
+
+        # Load sparse matrix
+        edge_matrix = sp.load_npz(edge_file_path)
+        total_edges = edge_matrix.nnz  # Number of non-zero elements (edges)
+
+        print(f"Loaded edge matrix from {edge_file_path}")
+        print(f"  Shape: {edge_matrix.shape}")
+        print(f"  Total edges: {total_edges}")
+
+        return total_edges
+
+    def analytical_approximation(self, source_degrees: np.ndarray, target_degrees: np.ndarray, total_edges_m: int) -> np.ndarray:
+        """
+        Calculate analytical approximation for edge probabilities.
+
+        Formula: P_{i,j} = (u_i * v_j) / sqrt((u_i * v_j)^2 + (m - u_i - v_j + 1)^2)
+
+        Parameters:
+        -----------
+        source_degrees : np.ndarray
+            Source node degrees
+        target_degrees : np.ndarray
+            Target node degrees
+        total_edges_m : int
+            Total number of edges in the network
+
+        Returns:
+        --------
+        np.ndarray
+            Analytical approximation probabilities
+        """
+        u_i = source_degrees.astype(np.float64)
+        v_j = target_degrees.astype(np.float64)
+        m = float(total_edges_m)
+
+        # Calculate the analytical approximation
+        numerator = u_i * v_j
+        denominator_term = (m - u_i - v_j + 1.0)
+        denominator = np.sqrt(numerator**2 + denominator_term**2)
+
+        # Avoid division by zero
+        denominator = np.where(denominator == 0, 1e-10, denominator)
+        probabilities = numerator / denominator
+
+        # Ensure probabilities are in [0, 1] range
+        probabilities = np.clip(probabilities, 0.0, 1.0)
+
+        return probabilities
+
+    def validate_analytical_approximation_vs_empirical(self, source_degrees: np.ndarray, target_degrees: np.ndarray,
+                                                     empirical_frequencies: np.ndarray, total_edges_m: int) -> Dict[str, Any]:
+        """
+        Validate analytical approximation against empirical frequencies.
+
+        Parameters:
+        -----------
+        source_degrees : np.ndarray
+            Source degrees from empirical data
+        target_degrees : np.ndarray
+            Target degrees from empirical data
+        empirical_frequencies : np.ndarray
+            Empirical frequencies
+        total_edges_m : int
+            Total number of edges
+
+        Returns:
+        --------
+        Dict[str, Any]
+            Validation results
+        """
+        # Calculate analytical approximation
+        analytical_probs = self.analytical_approximation(source_degrees, target_degrees, total_edges_m)
+
+        # Calculate comparison metrics
+        mae = mean_absolute_error(empirical_frequencies, analytical_probs)
+        rmse = np.sqrt(mean_squared_error(empirical_frequencies, analytical_probs))
+        r2 = r2_score(empirical_frequencies, analytical_probs)
+
+        # Correlation
+        if len(empirical_frequencies) > 1 and np.std(empirical_frequencies) > 0 and np.std(analytical_probs) > 0:
+            correlation = np.corrcoef(empirical_frequencies, analytical_probs)[0, 1]
+        else:
+            correlation = np.nan
+
+        validation_results = {
+            'total_edges_m': total_edges_m,
+            'mae_vs_empirical': mae,
+            'rmse_vs_empirical': rmse,
+            'r2_vs_empirical': r2,
+            'correlation_vs_empirical': correlation,
+            'mean_analytical': np.mean(analytical_probs),
+            'mean_empirical': np.mean(empirical_frequencies),
+            'std_analytical': np.std(analytical_probs),
+            'std_empirical': np.std(empirical_frequencies),
+            'analytical_probabilities': analytical_probs,
+            'empirical_frequencies': empirical_frequencies,
+            'source_degrees': source_degrees,
+            'target_degrees': target_degrees
+        }
+
+        print(f"\nAnalytical Approximation Validation vs Empirical:")
+        print(f"  Total edges (m): {total_edges_m}")
+        print(f"  MAE vs Empirical: {mae:.6f}")
+        print(f"  RMSE vs Empirical: {rmse:.6f}")
+        print(f"  R² vs Empirical: {r2:.6f}")
+        print(f"  Correlation vs Empirical: {correlation:.6f}")
+        print(f"  Mean Analytical: {np.mean(analytical_probs):.6f}")
+        print(f"  Mean Empirical: {np.mean(empirical_frequencies):.6f}")
+
+        return validation_results
+
+    def compare_models_vs_analytical_approximation(self, evaluation_results: Dict[str, Dict[str, Any]],
+                                                  models_results: Dict[str, Dict[str, Any]],
+                                                  X_test: np.ndarray, edge_file_path: str) -> Dict[str, Dict[str, Any]]:
+        """
+        Compare all model predictions with analytical approximation.
+
+        Parameters:
+        -----------
+        evaluation_results : Dict[str, Dict[str, Any]]
+            Model evaluation results
+        models_results : Dict[str, Dict[str, Any]]
+            Model training results
+        X_test : np.ndarray
+            Test features (source_degree, target_degree)
+        edge_file_path : str
+            Path to edge file to get total edges
+
+        Returns:
+        --------
+        Dict[str, Dict[str, Any]]
+            Comparison results for all models
+        """
+        from model_training import predict_with_model
+
+        # Get total edges
+        total_edges_m = self.get_total_edges_from_file(edge_file_path)
+
+        # Calculate analytical approximation for test set
+        source_degrees_test = X_test[:, 0]
+        target_degrees_test = X_test[:, 1]
+        analytical_probs = self.analytical_approximation(source_degrees_test, target_degrees_test, total_edges_m)
+
+        analytical_comparison = {}
+
+        print("\n" + "="*80)
+        print("COMPARING MODEL PREDICTIONS WITH ANALYTICAL APPROXIMATION")
+        print("="*80)
+        print(f"Total edges (m): {total_edges_m}")
+        print(f"Test samples: {len(X_test)}")
+        print()
+
+        for model_name in evaluation_results.keys():
+            print(f"Comparing {model_name} with analytical approximation...")
+
+            # Get model predictions
+            model = models_results[model_name]['model']
+            scaler = models_results[model_name]['training_result'].get('scaler')
+            model_predictions = predict_with_model(model, X_test, model_name, scaler)
+
+            # Calculate comparison metrics
+            mae = mean_absolute_error(analytical_probs, model_predictions)
+            rmse = np.sqrt(mean_squared_error(analytical_probs, model_predictions))
+            r2 = r2_score(analytical_probs, model_predictions)
+
+            # Correlation
+            if len(analytical_probs) > 1 and np.std(analytical_probs) > 0 and np.std(model_predictions) > 0:
+                correlation = np.corrcoef(analytical_probs, model_predictions)[0, 1]
+            else:
+                correlation = np.nan
+
+            analytical_comparison[model_name] = {
+                'mae_vs_analytical': mae,
+                'rmse_vs_analytical': rmse,
+                'r2_vs_analytical': r2,
+                'correlation_vs_analytical': correlation,
+                'mean_model_prediction': np.mean(model_predictions),
+                'mean_analytical': np.mean(analytical_probs),
+                'std_model_prediction': np.std(model_predictions),
+                'std_analytical': np.std(analytical_probs),
+                'model_predictions': model_predictions,
+                'analytical_probabilities': analytical_probs
+            }
+
+            print(f"  MAE vs Analytical: {mae:.6f}")
+            print(f"  RMSE vs Analytical: {rmse:.6f}")
+            print(f"  R² vs Analytical: {r2:.6f}")
+            print(f"  Correlation vs Analytical: {correlation:.6f}")
+            print()
+
+        return analytical_comparison
+
+    def print_analytical_comparison_summary(self, analytical_comparison: Dict[str, Dict[str, Any]]):
+        """Print summary of analytical approximation comparison."""
+
+        print("="*80)
+        print("MODEL PREDICTIONS VS ANALYTICAL APPROXIMATION SUMMARY")
+        print("="*80)
+
+        # Find best models
+        best_mae_model = min(analytical_comparison.keys(),
+                           key=lambda x: analytical_comparison[x]['mae_vs_analytical'])
+        best_correlation_model = max(analytical_comparison.keys(),
+                                   key=lambda x: analytical_comparison[x]['correlation_vs_analytical']
+                                   if not np.isnan(analytical_comparison[x]['correlation_vs_analytical']) else -1)
+
+        print(f"Best MAE vs Analytical: {best_mae_model} "
+              f"(MAE = {analytical_comparison[best_mae_model]['mae_vs_analytical']:.6f})")
+        print(f"Best Correlation vs Analytical: {best_correlation_model} "
+              f"(Correlation = {analytical_comparison[best_correlation_model]['correlation_vs_analytical']:.6f})")
+
+        print(f"\nDistribution Comparison:")
+        print(f"{'Model':<30} {'Mean Model':<15} {'Mean Analytical':<15} {'Std Model':<15} {'Std Analytical':<15}")
+        print("-" * 95)
+
+        for model_name, results in analytical_comparison.items():
+            print(f"{model_name:<30} {results['mean_model_prediction']:<15.6f} "
+                  f"{results['mean_analytical']:<15.6f} {results['std_model_prediction']:<15.6f} "
+                  f"{results['std_analytical']:<15.6f}")
+
+        print("\n" + "="*80)
+
+    def create_analytical_comparison_dataframe(self, analytical_comparison: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
+        """
+        Create a DataFrame comparing models vs analytical approximation.
+
+        Parameters:
+        -----------
+        analytical_comparison : Dict[str, Dict[str, Any]]
+            Analytical comparison results
+
+        Returns:
+        --------
+        pd.DataFrame
+            Comparison DataFrame
+        """
+        comparison_data = []
+
+        for model_name, results in analytical_comparison.items():
+            row = {
+                'Model': model_name,
+                'MAE vs Analytical': results['mae_vs_analytical'],
+                'RMSE vs Analytical': results['rmse_vs_analytical'],
+                'R² vs Analytical': results['r2_vs_analytical'],
+                'Correlation vs Analytical': results['correlation_vs_analytical'],
+                'Mean Model Prediction': results['mean_model_prediction'],
+                'Mean Analytical': results['mean_analytical'],
+                'Std Model Prediction': results['std_model_prediction'],
+                'Std Analytical': results['std_analytical']
+            }
+            comparison_data.append(row)
+
+        df = pd.DataFrame(comparison_data)
+
+        # Sort by correlation with analytical (descending)
+        df = df.sort_values('Correlation vs Analytical', ascending=False).reset_index(drop=True)
+
+        return df
+
 
 def get_best_models(evaluation_results: Dict[str, Dict[str, Any]],
                    metrics: List[str] = None) -> Dict[str, str]:
@@ -722,3 +996,5 @@ def get_best_models(evaluation_results: Dict[str, Dict[str, Any]],
         best_models[metric] = best_model
 
     return best_models
+
+

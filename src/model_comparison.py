@@ -16,8 +16,9 @@ from typing import Dict, Any, Tuple
 class SimpleNN(nn.Module):
     """Simple Neural Network with 2 hidden layers for continuous edge probability prediction."""
 
-    def __init__(self, input_dim: int = 2, hidden_dims: Tuple[int, int] = (64, 32), dropout_rate: float = 0.2):
+    def __init__(self, input_dim: int = 2, hidden_dims: Tuple[int, int] = (128, 64), dropout_rate: float = 0.3, use_class_weights: bool = False):
         super(SimpleNN, self).__init__()
+        self.use_class_weights = use_class_weights
 
         self.network = nn.Sequential(
             # First hidden layer
@@ -30,9 +31,8 @@ class SimpleNN(nn.Module):
             nn.ReLU(),
             nn.Dropout(dropout_rate),
 
-            # Output layer (continuous output between 0 and 1)
-            nn.Linear(hidden_dims[1], 1),
-            nn.Sigmoid()
+            # Output layer (logits for BCEWithLogitsLoss if using class weights, else sigmoid)
+            nn.Linear(hidden_dims[1], 1)
         )
 
         # Initialize weights
@@ -46,7 +46,11 @@ class SimpleNN(nn.Module):
 
     def forward(self, x):
         """Forward pass through the network."""
-        return self.network(x).squeeze()
+        output = self.network(x).squeeze()
+        # Apply sigmoid if not using class weights (BCEWithLogitsLoss handles sigmoid internally)
+        if not self.use_class_weights:
+            output = torch.sigmoid(output)
+        return output
 
 
 class ModelCollection:
@@ -56,12 +60,18 @@ class ModelCollection:
         self.random_state = random_state
         self.models = {}
 
-    def create_models(self) -> Dict[str, Any]:
-        """Create all models for comparison."""
+    def create_models(self, use_class_weights: bool = False) -> Dict[str, Any]:
+        """Create all models for comparison.
+
+        Parameters:
+        -----------
+        use_class_weights : bool
+            Whether to configure neural network for class imbalance handling
+        """
 
         # 1. Simple Neural Network
         torch.manual_seed(self.random_state)
-        simple_nn = SimpleNN(input_dim=2, hidden_dims=(64, 32), dropout_rate=0.2)
+        simple_nn = SimpleNN(input_dim=2, hidden_dims=(128, 64), dropout_rate=0.3, use_class_weights=use_class_weights)
 
         # 2. Random Forest Classifier
         random_forest = RandomForestClassifier(
@@ -95,7 +105,7 @@ class ModelCollection:
     def get_model_info(self) -> Dict[str, str]:
         """Get description of each model."""
         return {
-            'Simple NN': 'Neural Network with 2 hidden layers (64, 32 neurons), ReLU activation, dropout=0.2',
+            'Simple NN': 'Neural Network with 2 hidden layers (128, 64 neurons), ReLU activation, dropout=0.3',
             'Random Forest': 'Random Forest Classifier with 100 trees, max_depth=10',
             'Logistic Regression': 'Standard logistic regression with L2 regularization',
             'Polynomial Logistic Regression': 'Polynomial features (degree=2) + Logistic regression'

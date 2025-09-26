@@ -24,8 +24,8 @@ class ModelTrainer:
 
     def train_neural_network(self, model: SimpleNN, X_train: np.ndarray, y_train: np.ndarray,
                            X_val: np.ndarray, y_val: np.ndarray,
-                           epochs: int = 100, batch_size: int = 512,
-                           learning_rate: float = 0.001, patience: int = 10) -> Dict[str, Any]:
+                           epochs: int = 80, batch_size: int = 1024,
+                           learning_rate: float = 0.002, patience: int = 8) -> Dict[str, Any]:
         """
         Train a neural network model.
 
@@ -51,20 +51,70 @@ class ModelTrainer:
         Dict[str, Any]
             Training history and metrics
         """
-        # Convert to tensors
-        X_train_tensor = torch.FloatTensor(X_train)
+        # Convert to tensors with light normalization
+        from sklearn.preprocessing import StandardScaler
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_val_scaled = scaler.transform(X_val)
+
+        X_train_tensor = torch.FloatTensor(X_train_scaled)
         y_train_tensor = torch.FloatTensor(y_train)
-        X_val_tensor = torch.FloatTensor(X_val)
+        X_val_tensor = torch.FloatTensor(X_val_scaled)
         y_val_tensor = torch.FloatTensor(y_val)
+
+        # Store scaler for later use
+        self.nn_scaler = scaler
 
         # Create data loader
         train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-        # Setup training
-        criterion = nn.BCELoss()  # Binary cross-entropy for probability prediction
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, factor=0.5, verbose=False)
+        # Setup training with class weights if enabled
+        if model.use_class_weights:
+            # Calculate class weights for imbalanced data
+            n_positive = np.sum(y_train)
+            n_negative = len(y_train) - n_positive
+            pos_weight = torch.tensor(n_negative / n_positive)  # Weight for positive class
+
+            # Use Focal Loss for better handling of class imbalance
+            class FocalLoss(nn.Module):
+                def __init__(self, alpha=0.25, gamma=2.0):
+                    super(FocalLoss, self).__init__()
+                    self.alpha = alpha
+                    self.gamma = gamma
+
+                def forward(self, inputs, targets):
+                    bce_loss = nn.functional.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+                    pt = torch.exp(-bce_loss)
+                    focal_loss = self.alpha * (1-pt)**self.gamma * bce_loss
+                    return focal_loss.mean()
+
+            criterion = FocalLoss(alpha=0.25, gamma=2.0)
+
+            # Calculate and display class weights for logging
+            total_samples = len(y_train)
+            positive_weight = total_samples / (2 * n_positive)
+            negative_weight = total_samples / (2 * n_negative)
+            print(f"  Using Focal Loss (alpha=0.25, gamma=2.0) for class imbalance")
+            print(f"  Class weights: Positive={positive_weight:.3f}, Negative={negative_weight:.3f}")
+            print(f"  Positive samples: {int(n_positive)} ({n_positive/len(y_train):.1%})")
+            print(f"  Negative samples: {int(n_negative)} ({n_negative/len(y_train):.1%})")
+        else:
+            # Use Label Smoothing for better generalization
+            class LabelSmoothingBCE(nn.Module):
+                def __init__(self, smoothing=0.1):
+                    super(LabelSmoothingBCE, self).__init__()
+                    self.smoothing = smoothing
+
+                def forward(self, inputs, targets):
+                    targets_smooth = targets * (1 - self.smoothing) + 0.5 * self.smoothing
+                    return nn.functional.binary_cross_entropy_with_logits(inputs, targets_smooth)
+
+            criterion = LabelSmoothingBCE(smoothing=0.1)
+            print(f"  Using Label Smoothing BCE (smoothing=0.1)")
+
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=5e-5, betas=(0.9, 0.999))
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=4, factor=0.5, verbose=False, min_lr=5e-6)
 
         # Training history
         history = {
@@ -96,12 +146,21 @@ class ModelTrainer:
             for batch_X, batch_y in train_loader:
                 optimizer.zero_grad()
                 outputs = model(batch_X)
-                loss = criterion(outputs, batch_y)
+                if model.use_class_weights:
+                    # BCEWithLogitsLoss expects raw logits (no sigmoid)
+                    loss = criterion(outputs, batch_y)
+                    # Apply sigmoid for accuracy calculation
+                    probs = torch.sigmoid(outputs)
+                else:
+                    # Standard BCE loss expects probabilities (with sigmoid)
+                    loss = criterion(outputs, batch_y)
+                    probs = outputs
+
                 loss.backward()
                 optimizer.step()
 
                 train_loss += loss.item()
-                predicted = (outputs > 0.5).float()
+                predicted = (probs > 0.5).float()
                 train_total += batch_y.size(0)
                 train_correct += (predicted == batch_y).sum().item()
 
@@ -110,7 +169,11 @@ class ModelTrainer:
             with torch.no_grad():
                 val_outputs = model(X_val_tensor)
                 val_loss = criterion(val_outputs, y_val_tensor).item()
-                val_predicted = (val_outputs > 0.5).float()
+                if model.use_class_weights:
+                    val_probs = torch.sigmoid(val_outputs)
+                else:
+                    val_probs = val_outputs
+                val_predicted = (val_probs > 0.5).float()
                 val_acc = (val_predicted == y_val_tensor).float().mean().item()
 
             # Record metrics
@@ -154,7 +217,8 @@ class ModelTrainer:
             'history': history,
             'best_val_loss': best_val_loss,
             'training_time': training_time,
-            'epochs_trained': epoch + 1
+            'epochs_trained': epoch + 1,
+            'scaler': self.nn_scaler
         }
 
     def train_sklearn_model(self, model: Any, X_train: np.ndarray, y_train: np.ndarray,
@@ -263,6 +327,8 @@ class ModelTrainer:
                 training_result = self.train_neural_network(
                     model, X_train, y_train, X_val, y_val
                 )
+                # Store NN scaler separately
+                self.scalers[model_name] = training_result.get('scaler')
             else:
                 # Train sklearn models with full training data
                 training_result = self.train_sklearn_model(
@@ -315,7 +381,13 @@ def predict_with_model(model: Any, X: np.ndarray, model_name: str,
         model.eval()
         with torch.no_grad():
             X_tensor = torch.FloatTensor(X_scaled)
-            predictions = model(X_tensor).numpy()
+            outputs = model(X_tensor)
+            if model.use_class_weights:
+                # Apply sigmoid to logits to get probabilities
+                predictions = torch.sigmoid(outputs).numpy()
+            else:
+                # Already probabilities
+                predictions = outputs.numpy()
     else:
         # Scikit-learn prediction
         if hasattr(model, 'predict_proba'):
