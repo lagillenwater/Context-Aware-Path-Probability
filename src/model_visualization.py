@@ -479,6 +479,226 @@ class ModelVisualizer:
         if save_dir:
             print(f"All figures saved to: {save_dir}")
 
+    def plot_analytical_validation(self, validation_results: Dict[str, Any],
+                                 figsize: Optional[Tuple[int, int]] = None, save_path: str = None):
+        """
+        Plot analytical approximation validation against empirical frequencies.
+
+        Parameters:
+        -----------
+        validation_results : Dict[str, Any]
+            Results from validate_analytical_approximation_vs_empirical
+        figsize : Optional[Tuple[int, int]]
+            Figure size
+        save_path : str, optional
+            Path to save the figure
+        """
+        if figsize is None:
+            figsize = (12, 5)
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+        analytical_probs = validation_results['analytical_probabilities']
+        empirical_freqs = validation_results['empirical_frequencies']
+        correlation = validation_results['correlation_vs_empirical']
+        mae = validation_results['mae_vs_empirical']
+        r2 = validation_results['r2_vs_empirical']
+
+        # Scatter plot
+        ax1.scatter(empirical_freqs, analytical_probs, alpha=0.6, s=20)
+        ax1.plot([0, 1], [0, 1], 'r--', alpha=0.8, label='Perfect Match')
+        ax1.set_xlabel('Empirical Frequency')
+        ax1.set_ylabel('Analytical Approximation')
+        ax1.set_title(f'Analytical vs Empirical\nr = {correlation:.3f}')
+        ax1.grid(True, alpha=0.3)
+        ax1.legend()
+
+        # Residuals plot
+        residuals = analytical_probs - empirical_freqs
+        ax2.scatter(empirical_freqs, residuals, alpha=0.6, s=20)
+        ax2.axhline(y=0, color='r', linestyle='--', alpha=0.8)
+        ax2.set_xlabel('Empirical Frequency')
+        ax2.set_ylabel('Residuals (Analytical - Empirical)')
+        ax2.set_title(f'Residuals\nMAE = {mae:.4f}, R² = {r2:.3f}')
+        ax2.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+        plt.show()
+
+    def create_analytical_heatmap(self, source_bins: np.ndarray, target_bins: np.ndarray,
+                                total_edges_m: int, figsize: Optional[Tuple[int, int]] = None,
+                                save_path: str = None):
+        """
+        Create heatmap of analytical approximation probabilities.
+
+        Parameters:
+        -----------
+        source_bins : np.ndarray
+            Source degree bins
+        target_bins : np.ndarray
+            Target degree bins
+        total_edges_m : int
+            Total number of edges
+        figsize : Optional[Tuple[int, int]]
+            Figure size
+        save_path : str, optional
+            Path to save the figure
+        """
+        if figsize is None:
+            figsize = (10, 8)
+
+        # Create grid
+        source_grid, target_grid = np.meshgrid(source_bins, target_bins)
+
+        # Calculate analytical approximation
+        u_i = source_grid.astype(np.float64)
+        v_j = target_grid.astype(np.float64)
+        m = float(total_edges_m)
+
+        numerator = u_i * v_j
+        denominator_term = (m - u_i - v_j + 1.0)
+        denominator = np.sqrt(numerator**2 + denominator_term**2)
+        denominator = np.where(denominator == 0, 1e-10, denominator)
+        probabilities = numerator / denominator
+        probabilities = np.clip(probabilities, 0.0, 1.0)
+
+        plt.figure(figsize=figsize)
+        plt.imshow(probabilities, extent=[source_bins.min(), source_bins.max(),
+                                        target_bins.min(), target_bins.max()],
+                  aspect='auto', origin='lower', cmap='viridis', interpolation='bilinear')
+
+        plt.colorbar(label='Edge Probability')
+        plt.xlabel('Source Degree')
+        plt.ylabel('Target Degree')
+        plt.title('Analytical Approximation Heatmap')
+        plt.grid(True, alpha=0.3)
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+        plt.show()
+
+    def plot_models_vs_analytical_comparison(self, analytical_comparison: Dict[str, Dict[str, Any]],
+                                           figsize: Optional[Tuple[int, int]] = None, save_path: str = None):
+        """
+        Plot model predictions vs analytical approximation comparison.
+
+        Parameters:
+        -----------
+        analytical_comparison : Dict[str, Dict[str, Any]]
+            Results from compare_models_vs_analytical_approximation
+        figsize : Optional[Tuple[int, int]]
+            Figure size
+        save_path : str, optional
+            Path to save the figure
+        """
+        if figsize is None:
+            figsize = (15, 10)
+
+        fig, axes = plt.subplots(2, 2, figsize=figsize)
+        axes = axes.flatten()
+
+        for i, (model_name, results) in enumerate(analytical_comparison.items()):
+            if i >= 4:  # Only plot first 4 models
+                break
+
+            model_predictions = results['model_predictions']
+            analytical_probs = results['analytical_probabilities']
+            correlation = results['correlation_vs_analytical']
+
+            axes[i].scatter(analytical_probs, model_predictions, alpha=0.6, s=20)
+            axes[i].plot([0, 1], [0, 1], 'r--', alpha=0.8)
+            axes[i].set_xlabel('Analytical Approximation')
+            axes[i].set_ylabel('Model Prediction')
+            axes[i].set_title(f'{model_name}\nr = {correlation:.3f}')
+            axes[i].grid(True, alpha=0.3)
+            axes[i].set_xlim(0, 1)
+            axes[i].set_ylim(0, 1)
+
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+        plt.show()
+
+    def plot_three_way_comparison(self, empirical_freq_file: str, analytical_comparison: Dict[str, Dict[str, Any]],
+                                validation_results: Dict[str, Any], best_model_name: str,
+                                figsize: Optional[Tuple[int, int]] = None, save_path: str = None):
+        """
+        Create three-way comparison plot: empirical vs analytical vs best model.
+
+        Parameters:
+        -----------
+        empirical_freq_file : str
+            Path to empirical frequency file
+        analytical_comparison : Dict[str, Dict[str, Any]]
+            Analytical comparison results
+        validation_results : Dict[str, Any]
+            Validation results for analytical approximation
+        best_model_name : str
+            Name of the best performing model
+        figsize : Optional[Tuple[int, int]]
+            Figure size
+        save_path : str, optional
+            Path to save the figure
+        """
+        if figsize is None:
+            figsize = (15, 5)
+
+        fig, axes = plt.subplots(1, 3, figsize=figsize)
+
+        # Load empirical data
+        import pandas as pd
+        empirical_df = pd.read_csv(empirical_freq_file)
+        empirical_freqs = empirical_df['empirical_frequency'].values if 'empirical_frequency' in empirical_df.columns else empirical_df['frequency'].values
+
+        # Get analytical and model data
+        analytical_probs = validation_results['analytical_probabilities']
+        model_predictions = analytical_comparison[best_model_name]['model_predictions']
+
+        # Ensure all arrays have compatible sizes
+        min_size = min(len(empirical_freqs), len(analytical_probs), len(model_predictions))
+
+        empirical_subset = empirical_freqs[:min_size]
+        analytical_subset = analytical_probs[:min_size]
+        model_subset = model_predictions[:min_size]
+
+        # Plot 1: Empirical vs Analytical
+        axes[0].scatter(empirical_subset, analytical_subset, alpha=0.6, s=20)
+        axes[0].plot([0, 1], [0, 1], 'r--', alpha=0.8)
+        axes[0].set_xlabel('Empirical Frequency')
+        axes[0].set_ylabel('Analytical Approximation')
+        axes[0].set_title('Empirical vs Analytical')
+        axes[0].grid(True, alpha=0.3)
+
+        # Plot 2: Empirical vs Best Model
+        axes[1].scatter(empirical_subset, model_subset, alpha=0.6, s=20)
+        axes[1].plot([0, 1], [0, 1], 'r--', alpha=0.8)
+        axes[1].set_xlabel('Empirical Frequency')
+        axes[1].set_ylabel(f'{best_model_name} Prediction')
+        axes[1].set_title(f'Empirical vs {best_model_name}')
+        axes[1].grid(True, alpha=0.3)
+
+        # Plot 3: Analytical vs Best Model
+        axes[2].scatter(analytical_subset, model_subset, alpha=0.6, s=20)
+        axes[2].plot([0, 1], [0, 1], 'r--', alpha=0.8)
+        axes[2].set_xlabel('Analytical Approximation')
+        axes[2].set_ylabel(f'{best_model_name} Prediction')
+        axes[2].set_title(f'Analytical vs {best_model_name}')
+        axes[2].grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+        plt.show()
+
 
 def create_comparison_table_plot(comparison_df: pd.DataFrame,
                                figsize: Optional[Tuple[int, int]] = None, save_path: str = None):
