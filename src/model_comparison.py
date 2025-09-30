@@ -442,7 +442,8 @@ def _get_enhanced_feature_names() -> list:
 
 
 def create_degree_grid(source_degrees: np.ndarray, target_degrees: np.ndarray,
-                      n_bins: int = 50) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+                      n_bins: int = 50, enhanced_features: bool = False,
+                      edge_matrix: Optional[sp.csr_matrix] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Create a grid of degree combinations for prediction visualization.
 
@@ -454,6 +455,10 @@ def create_degree_grid(source_degrees: np.ndarray, target_degrees: np.ndarray,
         Array of target degrees
     n_bins : int
         Number of bins for each degree dimension
+    enhanced_features : bool
+        Whether to create enhanced features for the grid
+    edge_matrix : Optional[sp.csr_matrix]
+        Edge matrix needed for enhanced feature computation
 
     Returns:
     --------
@@ -471,6 +476,15 @@ def create_degree_grid(source_degrees: np.ndarray, target_degrees: np.ndarray,
     source_grid, target_grid = np.meshgrid(source_bins, target_bins)
 
     # Flatten for prediction
-    grid_features = np.column_stack([source_grid.ravel(), target_grid.ravel()])
+    if enhanced_features and edge_matrix is not None:
+        # Create enhanced features for the grid
+        basic_features = np.column_stack([source_grid.ravel(), target_grid.ravel()])
+        grid_features = _create_enhanced_features(
+            basic_features, edge_matrix,
+            adaptive_sampling=False  # No sampling for visualization grid
+        )
+    else:
+        # Use basic 2D features
+        grid_features = np.column_stack([source_grid.ravel(), target_grid.ravel()])
 
     return source_bins, target_bins, grid_features
