@@ -167,7 +167,7 @@ class ModelVisualizer:
     def create_prediction_heatmap(self, model: Any, model_name: str,
                                 source_bins: np.ndarray, target_bins: np.ndarray,
                                 scaler: Any = None, figsize: Optional[Tuple[int, int]] = None,
-                                save_path: str = None):
+                                save_path: str = None, grid_features: Optional[np.ndarray] = None):
         """
         Create a heatmap showing edge probability predictions across degree combinations.
 
@@ -195,7 +195,14 @@ class ModelVisualizer:
 
         # Create meshgrid
         source_grid, target_grid = np.meshgrid(source_bins, target_bins)
-        grid_features = np.column_stack([source_grid.ravel(), target_grid.ravel()])
+
+        # Use pre-computed grid features if provided, otherwise create basic 2D features
+        if grid_features is not None:
+            # Use enhanced features provided by caller
+            pass  # grid_features is already set
+        else:
+            # Create basic 2D features (backward compatibility)
+            grid_features = np.column_stack([source_grid.ravel(), target_grid.ravel()])
 
         # Make predictions
         predictions = predict_with_model(model, grid_features, model_name, scaler)
@@ -230,7 +237,7 @@ class ModelVisualizer:
     def create_all_prediction_heatmaps(self, models_results: Dict[str, Dict[str, Any]],
                                      source_bins: np.ndarray, target_bins: np.ndarray,
                                      figsize_individual: Optional[Tuple[int, int]] = None,
-                                     save_dir: str = None):
+                                     save_dir: str = None, grid_features: Optional[np.ndarray] = None):
         """
         Create prediction heatmaps for all models.
 
@@ -266,7 +273,7 @@ class ModelVisualizer:
             print(f"Creating heatmap for {model_name}...")
             self.create_prediction_heatmap(
                 model, model_name, source_bins, target_bins,
-                scaler, figsize_individual, save_path
+                scaler, figsize_individual, save_path, grid_features
             )
 
     def create_combined_heatmap_grid(self, models_results: Dict[str, Dict[str, Any]],
