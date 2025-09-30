@@ -322,7 +322,10 @@ class ModelEvaluator:
             matched_empirical = []
             unmatched_count = 0
 
-            for i, (source_deg, target_deg) in enumerate(X_test):
+            for i in range(len(X_test)):
+                # Extract source and target degrees (first two columns)
+                source_deg = X_test[i, 0]
+                target_deg = X_test[i, 1]
                 key = (int(source_deg), int(target_deg))
                 if key in empirical_lookup:
                     matched_predictions.append(test_predictions[i])
