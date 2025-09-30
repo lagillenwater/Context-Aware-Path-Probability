@@ -476,12 +476,98 @@ def create_degree_grid(source_degrees: np.ndarray, target_degrees: np.ndarray,
     if enhanced_features and edge_matrix is not None:
         # Create enhanced features for the grid
         basic_features = np.column_stack([source_grid.ravel(), target_grid.ravel()])
-        grid_features = _create_enhanced_features(
-            basic_features, edge_matrix,
-            adaptive_sampling=False  # No sampling for visualization grid
+        grid_features = _create_grid_enhanced_features(
+            basic_features, edge_matrix
         )
     else:
         # Use basic 2D features
         grid_features = np.column_stack([source_grid.ravel(), target_grid.ravel()])
 
     return source_bins, target_bins, grid_features
+
+
+def _create_grid_enhanced_features(basic_features: np.ndarray, edge_matrix: sp.csr_matrix) -> np.ndarray:
+    """
+    Create enhanced features for visualization grid points.
+
+    Parameters:
+    -----------
+    basic_features : np.ndarray
+        Array of shape (N, 2) with source and target degrees
+    edge_matrix : sp.csr_matrix
+        Sparse edge matrix for calculating context features
+
+    Returns:
+    --------
+    np.ndarray
+        Enhanced features array (N, 18)
+    """
+    n_sources, n_targets = edge_matrix.shape
+    total_edges = edge_matrix.nnz
+    edge_density = total_edges / (n_sources * n_targets)
+
+    # Calculate global statistics for normalization
+    source_degrees_all = np.array(edge_matrix.sum(axis=1)).flatten()
+    target_degrees_all = np.array(edge_matrix.sum(axis=0)).flatten()
+
+    max_source_degree = source_degrees_all.max() if len(source_degrees_all) > 0 else 1
+    max_target_degree = target_degrees_all.max() if len(target_degrees_all) > 0 else 1
+    mean_source_degree = source_degrees_all.mean()
+    mean_target_degree = target_degrees_all.mean()
+
+    features_list = []
+
+    for src_deg, tgt_deg in basic_features:
+        # Create the exact same 18 enhanced features as in the training data
+        features = [
+            src_deg,  # source_degree
+            tgt_deg,  # target_degree
+        ]
+
+        # Normalized degrees
+        features.extend([
+            src_deg / max_source_degree,  # source_degree_normalized
+            tgt_deg / max_target_degree,  # target_degree_normalized
+        ])
+
+        # Relative degrees (compared to mean)
+        features.extend([
+            src_deg / (mean_source_degree + 1e-8),  # source_degree_relative
+            tgt_deg / (mean_target_degree + 1e-8),  # target_degree_relative
+        ])
+
+        # Degree interactions
+        features.extend([
+            src_deg * tgt_deg,  # degree_product
+            src_deg + tgt_deg,  # degree_sum
+            abs(src_deg - tgt_deg),  # degree_difference
+            min(src_deg, tgt_deg),  # degree_min
+            max(src_deg, tgt_deg),  # degree_max
+        ])
+
+        # Logarithmic features (handle zeros)
+        features.extend([
+            np.log1p(src_deg),  # log_source_degree
+            np.log1p(tgt_deg),  # log_target_degree
+            np.log1p(src_deg * tgt_deg),  # log_degree_product
+        ])
+
+        # Degree ratios (handle division by zero)
+        if tgt_deg > 0:
+            degree_ratio = src_deg / tgt_deg
+        else:
+            degree_ratio = src_deg  # or some default value
+        features.append(degree_ratio)  # degree_ratio
+
+        # Centrality-inspired features
+        features.extend([
+            src_deg / n_sources,  # source_centrality
+            tgt_deg / n_targets,  # target_centrality
+        ])
+
+        # Edge density context
+        features.append(edge_density)  # edge_density_context
+
+        features_list.append(features)
+
+    return np.array(features_list)
