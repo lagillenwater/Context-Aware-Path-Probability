@@ -150,21 +150,26 @@ def load_edge_data(edge_file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     return source_degrees, target_degrees
 
 
-def prepare_edge_features_and_labels(edge_file_path: str, sample_ratio: float = 0.1) -> Tuple[np.ndarray, np.ndarray]:
+def prepare_edge_features_and_labels(edge_file_path: str, sample_ratio: float = 0.1,
+                                   adaptive_sampling: bool = True, enhanced_features: bool = True) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Prepare features (source_degree, target_degree) and labels (edge_exists) from edge matrix.
+    Prepare features and labels from edge matrix with adaptive sampling and enhanced features.
 
     Parameters:
     -----------
     edge_file_path : str
         Path to the sparse edge matrix file
     sample_ratio : float
-        Ratio of negative samples to include (to balance dataset)
+        Base ratio of negative samples to include (adapted based on edge density)
+    adaptive_sampling : bool
+        Whether to use adaptive sampling strategy based on edge density
+    enhanced_features : bool
+        Whether to include domain-specific engineered features
 
     Returns:
     --------
     Tuple[np.ndarray, np.ndarray]
-        Features array (N, 2) and labels array (N,)
+        Features array (N, feature_dim) and labels array (N,)
     """
     import scipy.sparse as sp
 
@@ -176,36 +181,254 @@ def prepare_edge_features_and_labels(edge_file_path: str, sample_ratio: float = 
     source_degrees = np.array(edge_matrix.sum(axis=1)).flatten()
     target_degrees = np.array(edge_matrix.sum(axis=0)).flatten()
 
+    # Calculate edge density for adaptive sampling
+    total_possible = n_sources * n_targets
+    n_positive = edge_matrix.nnz
+    edge_density = n_positive / total_possible
+
+    print(f"Edge matrix statistics:")
+    print(f"  Shape: {edge_matrix.shape}")
+    print(f"  Existing edges: {n_positive:,}")
+    print(f"  Edge density: {edge_density:.6f}")
+
+    # Adaptive sampling based on edge density
+    if adaptive_sampling:
+        if edge_density < 0.0001:  # Very sparse (< 0.01%)
+            adapted_ratio = 0.05  # More balanced sampling
+            stratified = True
+            print(f"  Very sparse edge type - using adapted ratio: {adapted_ratio}")
+        elif edge_density < 0.001:  # Sparse (< 0.1%)
+            adapted_ratio = 0.02  # Slightly more balanced
+            stratified = True
+            print(f"  Sparse edge type - using adapted ratio: {adapted_ratio}")
+        else:  # Dense enough for standard sampling
+            adapted_ratio = sample_ratio
+            stratified = False
+            print(f"  Dense edge type - using standard ratio: {adapted_ratio}")
+    else:
+        adapted_ratio = sample_ratio
+        stratified = False
+
     # Get positive edges (existing edges)
     positive_edges = list(zip(*edge_matrix.nonzero()))
-    n_positive = len(positive_edges)
 
-    # Sample negative edges (non-existing edges)
-    all_possible_edges = set((i, j) for i in range(n_sources) for j in range(n_targets))
-    negative_edges = list(all_possible_edges - set(positive_edges))
+    # Enhanced negative sampling
+    if stratified and adaptive_sampling:
+        # Stratified sampling by degree bins to ensure coverage
+        negative_edges_sampled = _stratified_negative_sampling(
+            n_sources, n_targets, positive_edges, source_degrees, target_degrees,
+            n_positive, adapted_ratio
+        )
+    else:
+        # Standard random sampling
+        all_possible_edges = set((i, j) for i in range(n_sources) for j in range(n_targets))
+        negative_edges = list(all_possible_edges - set(positive_edges))
 
-    # Sample negative edges to balance the dataset
-    n_negative_sample = min(int(n_positive / sample_ratio), len(negative_edges))
-    np.random.seed(42)  # For reproducibility
-    negative_sample = np.random.choice(len(negative_edges), n_negative_sample, replace=False)
-    negative_edges_sampled = [negative_edges[i] for i in negative_sample]
+        n_negative_sample = min(int(n_positive / adapted_ratio), len(negative_edges))
+        np.random.seed(42)  # For reproducibility
+        negative_sample = np.random.choice(len(negative_edges), n_negative_sample, replace=False)
+        negative_edges_sampled = [negative_edges[i] for i in negative_sample]
 
     # Combine positive and negative examples
     all_edges = positive_edges + negative_edges_sampled
     all_labels = [1.0] * n_positive + [0.0] * len(negative_edges_sampled)
 
-    # Create features array
-    features = np.array([[source_degrees[i], target_degrees[j]]
-                         for i, j in all_edges])
+    # Enhanced feature engineering
+    if enhanced_features:
+        features = _create_enhanced_features(all_edges, source_degrees, target_degrees,
+                                           n_sources, n_targets, edge_density)
+        feature_names = _get_enhanced_feature_names()
+    else:
+        # Basic features: source_degree, target_degree
+        features = np.array([[source_degrees[i], target_degrees[j]]
+                             for i, j in all_edges])
+        feature_names = ['source_degree', 'target_degree']
+
     labels = np.array(all_labels)
 
     print(f"Dataset prepared:")
-    print(f"  Positive examples: {n_positive}")
-    print(f"  Negative examples: {len(negative_edges_sampled)}")
-    print(f"  Total examples: {len(features)}")
+    print(f"  Positive examples: {n_positive:,}")
+    print(f"  Negative examples: {len(negative_edges_sampled):,}")
+    print(f"  Total examples: {len(features):,}")
     print(f"  Feature shape: {features.shape}")
+    print(f"  Features: {feature_names}")
 
     return features, labels
+
+
+def _stratified_negative_sampling(n_sources: int, n_targets: int, positive_edges: list,
+                                source_degrees: np.ndarray, target_degrees: np.ndarray,
+                                n_positive: int, sample_ratio: float) -> list:
+    """
+    Stratified negative sampling to ensure degree distribution coverage.
+    """
+    from collections import defaultdict
+
+    # Create degree bins
+    source_bins = np.percentile(source_degrees[source_degrees > 0], [25, 50, 75]) if np.sum(source_degrees > 0) > 0 else [1, 2, 3]
+    target_bins = np.percentile(target_degrees[target_degrees > 0], [25, 50, 75]) if np.sum(target_degrees > 0) > 0 else [1, 2, 3]
+
+    def get_bin(value, bins):
+        return np.digitize(value, bins)
+
+    # Group positive edges by degree bins
+    positive_by_bin = defaultdict(list)
+    for i, j in positive_edges:
+        src_bin = get_bin(source_degrees[i], source_bins)
+        tgt_bin = get_bin(target_degrees[j], target_bins)
+        positive_by_bin[(src_bin, tgt_bin)].append((i, j))
+
+    # Sample negatives proportionally from each bin
+    negative_edges_sampled = []
+    total_negative_needed = int(n_positive / sample_ratio)
+
+    # Generate potential negative edges by bin
+    for src_bin in range(len(source_bins) + 1):
+        for tgt_bin in range(len(target_bins) + 1):
+            # Find nodes in this bin
+            src_nodes = [i for i in range(n_sources)
+                        if get_bin(source_degrees[i], source_bins) == src_bin]
+            tgt_nodes = [j for j in range(n_targets)
+                        if get_bin(target_degrees[j], target_bins) == tgt_bin]
+
+            if not src_nodes or not tgt_nodes:
+                continue
+
+            # Calculate proportion for this bin
+            bin_positive_count = len(positive_by_bin[(src_bin, tgt_bin)])
+            if bin_positive_count == 0:
+                continue
+
+            bin_proportion = bin_positive_count / n_positive
+            bin_negative_needed = int(total_negative_needed * bin_proportion)
+
+            # Generate potential negative edges in this bin
+            potential_negatives = []
+            for src in src_nodes[:min(100, len(src_nodes))]:  # Limit for efficiency
+                for tgt in tgt_nodes[:min(100, len(tgt_nodes))]:
+                    if (src, tgt) not in positive_edges:
+                        potential_negatives.append((src, tgt))
+
+            # Sample from potential negatives
+            if potential_negatives and bin_negative_needed > 0:
+                sample_size = min(bin_negative_needed, len(potential_negatives))
+                sampled = np.random.choice(len(potential_negatives), sample_size, replace=False)
+                negative_edges_sampled.extend([potential_negatives[i] for i in sampled])
+
+    # If we didn't get enough samples, fill with random sampling
+    if len(negative_edges_sampled) < total_negative_needed:
+        all_possible = set((i, j) for i in range(n_sources) for j in range(n_targets))
+        remaining_negatives = list(all_possible - set(positive_edges) - set(negative_edges_sampled))
+        additional_needed = total_negative_needed - len(negative_edges_sampled)
+
+        if remaining_negatives:
+            additional_sample = np.random.choice(
+                len(remaining_negatives),
+                min(additional_needed, len(remaining_negatives)),
+                replace=False
+            )
+            negative_edges_sampled.extend([remaining_negatives[i] for i in additional_sample])
+
+    print(f"  Stratified sampling: {len(negative_edges_sampled):,} negative samples from {len(source_bins)+1}x{len(target_bins)+1} degree bins")
+    return negative_edges_sampled
+
+
+def _create_enhanced_features(all_edges: list, source_degrees: np.ndarray, target_degrees: np.ndarray,
+                            n_sources: int, n_targets: int, edge_density: float) -> np.ndarray:
+    """
+    Create enhanced feature set with domain-specific engineering.
+    """
+    features_list = []
+
+    # Calculate global statistics for normalization
+    max_source_degree = source_degrees.max() if len(source_degrees) > 0 else 1
+    max_target_degree = target_degrees.max() if len(target_degrees) > 0 else 1
+    mean_source_degree = source_degrees.mean()
+    mean_target_degree = target_degrees.mean()
+
+    for i, j in all_edges:
+        src_deg = source_degrees[i]
+        tgt_deg = target_degrees[j]
+
+        # Basic features
+        features = [
+            src_deg,  # source_degree
+            tgt_deg,  # target_degree
+        ]
+
+        # Normalized degrees
+        features.extend([
+            src_deg / max_source_degree,  # source_degree_normalized
+            tgt_deg / max_target_degree,  # target_degree_normalized
+        ])
+
+        # Relative degrees (compared to mean)
+        features.extend([
+            src_deg / (mean_source_degree + 1e-8),  # source_degree_relative
+            tgt_deg / (mean_target_degree + 1e-8),  # target_degree_relative
+        ])
+
+        # Degree interactions
+        features.extend([
+            src_deg * tgt_deg,  # degree_product
+            src_deg + tgt_deg,  # degree_sum
+            abs(src_deg - tgt_deg),  # degree_difference
+            min(src_deg, tgt_deg),  # degree_min
+            max(src_deg, tgt_deg),  # degree_max
+        ])
+
+        # Logarithmic features (handle zeros)
+        features.extend([
+            np.log1p(src_deg),  # log_source_degree
+            np.log1p(tgt_deg),  # log_target_degree
+            np.log1p(src_deg * tgt_deg),  # log_degree_product
+        ])
+
+        # Degree ratios (handle division by zero)
+        if tgt_deg > 0:
+            degree_ratio = src_deg / tgt_deg
+        else:
+            degree_ratio = src_deg  # or some default value
+        features.append(degree_ratio)  # degree_ratio
+
+        # Centrality-inspired features
+        features.extend([
+            src_deg / n_sources,  # source_centrality
+            tgt_deg / n_targets,  # target_centrality
+        ])
+
+        # Edge density context
+        features.append(edge_density)  # edge_density_context
+
+        features_list.append(features)
+
+    return np.array(features_list)
+
+
+def _get_enhanced_feature_names() -> list:
+    """
+    Get names of enhanced features for documentation.
+    """
+    return [
+        'source_degree',
+        'target_degree',
+        'source_degree_normalized',
+        'target_degree_normalized',
+        'source_degree_relative',
+        'target_degree_relative',
+        'degree_product',
+        'degree_sum',
+        'degree_difference',
+        'degree_min',
+        'degree_max',
+        'log_source_degree',
+        'log_target_degree',
+        'log_degree_product',
+        'degree_ratio',
+        'source_centrality',
+        'target_centrality',
+        'edge_density_context'
+    ]
 
 
 def create_degree_grid(source_degrees: np.ndarray, target_degrees: np.ndarray,
