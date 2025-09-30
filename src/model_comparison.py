@@ -71,19 +71,24 @@ class ModelCollection:
     def __init__(self, random_state: int = 42):
         self.random_state = random_state
         self.models = {}
+        self.input_dim = 2  # Track input dimension for model descriptions
 
-    def create_models(self, use_class_weights: bool = False) -> Dict[str, Any]:
+    def create_models(self, use_class_weights: bool = False, input_dim: int = 2) -> Dict[str, Any]:
         """Create all models for comparison.
 
         Parameters:
         -----------
         use_class_weights : bool
             Whether to configure neural network for class imbalance handling
+        input_dim : int
+            Number of input features for the neural network
         """
+        # Store input dimension for model descriptions
+        self.input_dim = input_dim
 
         # 1. Simple Neural Network - high performance architecture
         torch.manual_seed(self.random_state)
-        simple_nn = SimpleNN(input_dim=2, hidden_dims=(128, 64, 32), dropout_rate=0.3, use_class_weights=use_class_weights)
+        simple_nn = SimpleNN(input_dim=input_dim, hidden_dims=(128, 64, 32), dropout_rate=0.3, use_class_weights=use_class_weights)
 
         # 2. Random Forest Classifier
         random_forest = RandomForestClassifier(
@@ -116,8 +121,13 @@ class ModelCollection:
 
     def get_model_info(self) -> Dict[str, str]:
         """Get description of each model."""
+        if self.input_dim == 2:
+            nn_description = f'High-performance Neural Network with 3 hidden layers (128, 64, 32 neurons), BatchNorm, Focal Loss, {self.input_dim} features (source_degree, target_degree)'
+        else:
+            nn_description = f'High-performance Neural Network with 3 hidden layers (128, 64, 32 neurons), BatchNorm, Focal Loss, {self.input_dim} enhanced features (degrees, interactions, transformations)'
+
         return {
-            'Simple NN': 'High-performance Neural Network with 3 hidden layers (128, 64, 32 neurons), BatchNorm, Focal Loss, 2 features (source_degree, target_degree)',
+            'Simple NN': nn_description,
             'Random Forest': 'Random Forest Classifier with 100 trees, max_depth=10',
             'Logistic Regression': 'Standard logistic regression with L2 regularization',
             'Polynomial Logistic Regression': 'Polynomial features (degree=2) + Logistic regression'
