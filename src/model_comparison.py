@@ -14,34 +14,46 @@ from typing import Dict, Any, Tuple
 
 
 class SimpleNN(nn.Module):
-    """Simple Neural Network with 2 hidden layers for continuous edge probability prediction."""
+    """High-performance Neural Network with engineered features for edge probability prediction."""
 
-    def __init__(self, input_dim: int = 2, hidden_dims: Tuple[int, int] = (128, 64), dropout_rate: float = 0.3, use_class_weights: bool = False):
+    def __init__(self, input_dim: int = 2, hidden_dims: Tuple[int, int, int] = (128, 64, 32), dropout_rate: float = 0.3, use_class_weights: bool = False):
         super(SimpleNN, self).__init__()
         self.use_class_weights = use_class_weights
 
         self.network = nn.Sequential(
-            # First hidden layer
+            # First hidden layer - increased capacity
             nn.Linear(input_dim, hidden_dims[0]),
-            nn.ReLU(),
+            nn.BatchNorm1d(hidden_dims[0]),
+            nn.ReLU(inplace=True),
             nn.Dropout(dropout_rate),
 
             # Second hidden layer
             nn.Linear(hidden_dims[0], hidden_dims[1]),
-            nn.ReLU(),
+            nn.BatchNorm1d(hidden_dims[1]),
+            nn.ReLU(inplace=True),
             nn.Dropout(dropout_rate),
 
-            # Output layer (logits for BCEWithLogitsLoss if using class weights, else sigmoid)
-            nn.Linear(hidden_dims[1], 1)
+            # Third hidden layer for better representation
+            nn.Linear(hidden_dims[1], hidden_dims[2]),
+            nn.BatchNorm1d(hidden_dims[2]),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate * 0.5),  # Reduced dropout in final layer
+
+            # Output layer
+            nn.Linear(hidden_dims[2], 1)
         )
 
-        # Initialize weights
+        # Initialize weights with better initialization
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
-        """Initialize network weights."""
+        """Initialize network weights with improved initialization."""
         if isinstance(module, nn.Linear):
-            torch.nn.init.xavier_uniform_(module.weight)
+            # Use He initialization for ReLU networks
+            torch.nn.init.kaiming_uniform_(module.weight, nonlinearity='relu')
+            torch.nn.init.constant_(module.bias, 0)
+        elif isinstance(module, nn.BatchNorm1d):
+            torch.nn.init.constant_(module.weight, 1)
             torch.nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
@@ -69,9 +81,9 @@ class ModelCollection:
             Whether to configure neural network for class imbalance handling
         """
 
-        # 1. Simple Neural Network
+        # 1. Simple Neural Network - high performance architecture
         torch.manual_seed(self.random_state)
-        simple_nn = SimpleNN(input_dim=2, hidden_dims=(128, 64), dropout_rate=0.3, use_class_weights=use_class_weights)
+        simple_nn = SimpleNN(input_dim=2, hidden_dims=(128, 64, 32), dropout_rate=0.3, use_class_weights=use_class_weights)
 
         # 2. Random Forest Classifier
         random_forest = RandomForestClassifier(
@@ -105,7 +117,7 @@ class ModelCollection:
     def get_model_info(self) -> Dict[str, str]:
         """Get description of each model."""
         return {
-            'Simple NN': 'Neural Network with 2 hidden layers (128, 64 neurons), ReLU activation, dropout=0.3',
+            'Simple NN': 'High-performance Neural Network with 3 hidden layers (128, 64, 32 neurons), BatchNorm, Focal Loss, 2 features (source_degree, target_degree)',
             'Random Forest': 'Random Forest Classifier with 100 trees, max_depth=10',
             'Logistic Regression': 'Standard logistic regression with L2 regularization',
             'Polynomial Logistic Regression': 'Polynomial features (degree=2) + Logistic regression'
@@ -183,7 +195,8 @@ def prepare_edge_features_and_labels(edge_file_path: str, sample_ratio: float = 
     all_labels = [1.0] * n_positive + [0.0] * len(negative_edges_sampled)
 
     # Create features array
-    features = np.array([[source_degrees[i], target_degrees[j]] for i, j in all_edges])
+    features = np.array([[source_degrees[i], target_degrees[j]]
+                         for i, j in all_edges])
     labels = np.array(all_labels)
 
     print(f"Dataset prepared:")

@@ -24,8 +24,8 @@ class ModelTrainer:
 
     def train_neural_network(self, model: SimpleNN, X_train: np.ndarray, y_train: np.ndarray,
                            X_val: np.ndarray, y_val: np.ndarray,
-                           epochs: int = 80, batch_size: int = 1024,
-                           learning_rate: float = 0.002, patience: int = 8) -> Dict[str, Any]:
+                           epochs: int = 60, batch_size: int = 4096,
+                           learning_rate: float = 0.001, patience: int = 5) -> Dict[str, Any]:
         """
         Train a neural network model.
 
@@ -76,7 +76,7 @@ class ModelTrainer:
             n_negative = len(y_train) - n_positive
             pos_weight = torch.tensor(n_negative / n_positive)  # Weight for positive class
 
-            # Use Focal Loss for better handling of class imbalance
+            # Use Pure Focal Loss for better class imbalance handling
             class FocalLoss(nn.Module):
                 def __init__(self, alpha=0.25, gamma=2.0):
                     super(FocalLoss, self).__init__()
@@ -84,9 +84,22 @@ class ModelTrainer:
                     self.gamma = gamma
 
                 def forward(self, inputs, targets):
+                    # BCE loss for base calculation
                     bce_loss = nn.functional.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
-                    pt = torch.exp(-bce_loss)
-                    focal_loss = self.alpha * (1-pt)**self.gamma * bce_loss
+
+                    # Get probabilities
+                    probs = torch.sigmoid(inputs)
+                    pt = torch.where(targets == 1, probs, 1 - probs)
+
+                    # Apply alpha weighting
+                    alpha_t = torch.where(targets == 1, self.alpha, 1 - self.alpha)
+
+                    # Focal weight focuses on hard examples
+                    focal_weight = alpha_t * (1 - pt) ** self.gamma
+
+                    # Pure focal loss
+                    focal_loss = focal_weight * bce_loss
+
                     return focal_loss.mean()
 
             criterion = FocalLoss(alpha=0.25, gamma=2.0)
@@ -95,7 +108,8 @@ class ModelTrainer:
             total_samples = len(y_train)
             positive_weight = total_samples / (2 * n_positive)
             negative_weight = total_samples / (2 * n_negative)
-            print(f"  Using Focal Loss (alpha=0.25, gamma=2.0) for class imbalance")
+            print(f"  Using Focal Loss (alpha=0.25, gamma=2.0)")
+            print(f"  pos_weight={pos_weight.item():.3f} for class imbalance")
             print(f"  Class weights: Positive={positive_weight:.3f}, Negative={negative_weight:.3f}")
             print(f"  Positive samples: {int(n_positive)} ({n_positive/len(y_train):.1%})")
             print(f"  Negative samples: {int(n_negative)} ({n_negative/len(y_train):.1%})")
@@ -113,8 +127,13 @@ class ModelTrainer:
             criterion = LabelSmoothingBCE(smoothing=0.1)
             print(f"  Using Label Smoothing BCE (smoothing=0.1)")
 
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=5e-5, betas=(0.9, 0.999))
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=4, factor=0.5, verbose=False, min_lr=5e-6)
+        # Use AdamW optimizer with improved settings for better performance
+        optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-3,
+                               betas=(0.9, 0.999), eps=1e-8)
+        # Use OneCycleLR for better convergence and performance
+        scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=learning_rate*10,
+                                                epochs=epochs, steps_per_epoch=len(train_loader),
+                                                pct_start=0.3, anneal_strategy='cos')
 
         # Training history
         history = {
@@ -158,6 +177,7 @@ class ModelTrainer:
 
                 loss.backward()
                 optimizer.step()
+                scheduler.step()  # OneCycleLR steps every batch
 
                 train_loss += loss.item()
                 predicted = (probs > 0.5).float()
@@ -185,8 +205,8 @@ class ModelTrainer:
             history['train_acc'].append(train_acc)
             history['val_acc'].append(val_acc)
 
-            # Learning rate scheduling
-            scheduler.step(val_loss)
+            # Learning rate scheduling (OneCycleLR steps every batch)
+            # scheduler.step() is called in the training loop
 
             # Early stopping
             if val_loss < best_val_loss:

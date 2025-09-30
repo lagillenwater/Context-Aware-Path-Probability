@@ -219,6 +219,9 @@ class ModelEvaluator:
             # Comprehensive evaluation
             eval_result = self.comprehensive_evaluation(y_test, y_pred_proba, model_name)
 
+            # Store predictions for later use
+            eval_result['predictions'] = y_pred_proba
+
             evaluation_results[model_name] = eval_result
 
             # Print key metrics
