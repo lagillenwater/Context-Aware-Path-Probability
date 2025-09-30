@@ -6,11 +6,12 @@ Contains 4 different models: Simple NN, Random Forest, Logistic Regression, and 
 import numpy as np
 import torch
 import torch.nn as nn
+import scipy.sparse as sp
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 
 class SimpleNN(nn.Module):
@@ -148,8 +149,6 @@ def load_edge_data(edge_file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     Tuple[np.ndarray, np.ndarray]
         Source degrees and target degrees for all possible edges
     """
-    import scipy.sparse as sp
-
     # Load sparse matrix
     edge_matrix = sp.load_npz(edge_file_path)
 
@@ -181,8 +180,6 @@ def prepare_edge_features_and_labels(edge_file_path: str, sample_ratio: float = 
     Tuple[np.ndarray, np.ndarray]
         Features array (N, feature_dim) and labels array (N,)
     """
-    import scipy.sparse as sp
-
     # Load sparse matrix
     edge_matrix = sp.load_npz(edge_file_path)
     n_sources, n_targets = edge_matrix.shape
