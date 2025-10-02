@@ -549,35 +549,55 @@ class LearnedAnalyticalFormula:
 
     def _compute_empirical_from_permutations(self, graph_name: str, perm_ids: List[int],
                                               data_dir: Path) -> Dict[Tuple[int, int], float]:
-        """Compute empirical frequencies from specific permutations"""
-        empirical = {}
+        """
+        Compute empirical frequencies from specific permutations.
 
-        # Get reference degrees from perm 000
+        Frequency = (# permutations with edge) / (# nodes with that degree combination)
+        """
+        empirical_counts = {}  # Count occurrences across permutations
+        degree_pair_counts = {}  # Count how many (i,j) pairs have each (u,v)
+
+        # Get reference degrees from perm 000 (UNFILTERED for consistent indexing)
         ref_file = data_dir / 'permutations' / '000.hetmat' / 'edges' / f'{graph_name}.sparse.npz'
-        ref_matrix = sp.load_npz(ref_file)
-        ref_matrix, _, _ = filter_zero_degree_nodes(ref_matrix)
+        ref_matrix_orig = sp.load_npz(ref_file)
 
-        source_degrees = np.array(ref_matrix.sum(axis=1)).flatten()
-        target_degrees = np.array(ref_matrix.sum(axis=0)).flatten()
+        # Calculate degrees from ORIGINAL matrix
+        source_degrees_orig = np.array(ref_matrix_orig.sum(axis=1)).flatten()
+        target_degrees_orig = np.array(ref_matrix_orig.sum(axis=0)).flatten()
 
+        # Count how many (source, target) pairs have each (u, v) degree combination
+        for i in range(len(source_degrees_orig)):
+            for j in range(len(target_degrees_orig)):
+                u = int(source_degrees_orig[i])
+                v = int(target_degrees_orig[j])
+
+                # Only consider pairs where both have non-zero degree
+                if u > 0 and v > 0:
+                    key = (u, v)
+                    degree_pair_counts[key] = degree_pair_counts.get(key, 0) + 1
+
+        # Count edge occurrences across permutations
         for perm_id in perm_ids:
             perm_file = data_dir / 'permutations' / f'{perm_id:03d}.hetmat' / 'edges' / f'{graph_name}.sparse.npz'
-            edge_matrix = sp.load_npz(perm_file)
-            edge_matrix, source_map, target_map = filter_zero_degree_nodes(edge_matrix)
+            edge_matrix_orig = sp.load_npz(perm_file)
 
-            # Map back to reference degrees
-            for i, j in zip(*edge_matrix.nonzero()):
-                orig_i = source_map[i]
-                orig_j = target_map[j]
-                u = int(source_degrees[orig_i])
-                v = int(target_degrees[orig_j])
-                key = (u, v)
-                empirical[key] = empirical.get(key, 0) + 1
+            # Get edges from original unfiltered matrix
+            for i, j in zip(*edge_matrix_orig.nonzero()):
+                u = int(source_degrees_orig[i])
+                v = int(target_degrees_orig[j])
 
-        # Convert to frequencies
+                # Only count edges where both nodes have non-zero degree
+                if u > 0 and v > 0:
+                    key = (u, v)
+                    empirical_counts[key] = empirical_counts.get(key, 0) + 1
+
+        # Compute frequencies: (total edges with this degree pair) / (N_perms × N_pairs_with_this_degree)
+        empirical = {}
         N = len(perm_ids)
-        for key in empirical:
-            empirical[key] /= N
+
+        for key in empirical_counts:
+            # Frequency = (# edges observed) / (# permutations × # possible pairs)
+            empirical[key] = empirical_counts[key] / (N * degree_pair_counts[key])
 
         return empirical
 
