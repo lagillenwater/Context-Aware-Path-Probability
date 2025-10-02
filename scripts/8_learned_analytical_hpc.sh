@@ -3,49 +3,83 @@
 #SBATCH --output=logs/learned_analytical_%A_%a.out
 #SBATCH --error=logs/learned_analytical_%A_%a.err
 #SBATCH --time=04:00:00
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --partition=amilan
+#SBATCH --qos=normal
+#SBATCH --ntasks-per-node=8
+#SBATCH --nodes=1
+#SBATCH --mem=32G
 #SBATCH --array=0-23  # Adjust based on number of edge types
 
 # Learned Analytical Formula - HPC Batch Processing
 # This script runs the learned analytical formula notebook for all edge types
 # using papermill for parameterization and SLURM for distributed execution
 
-echo "========================================================================"
-echo "Learned Analytical Formula Analysis"
-echo "========================================================================"
+
+# Exit if any command fails
+set -e
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+BASE_DIR=$(realpath "$SLURM_SUBMIT_DIR/..")
+
+# Get the directory of this script and define base paths relative to it
+notebooks_path="${BASE_DIR}/notebooks"
+data_path="${BASE_DIR}/data"
+logs_dir="${BASE_DIR}/logs/learned_analytical"
+results_dir = "${BASE_DIR}/results"
+
+# Create logs directory if it doesn't exist
+mkdir -p $logs_dir
+mkdir -p $results_dir
+
+echo "****** Running model comparison analysis for job array index $SLURM_ARRAY_TASK_ID ******"
+echo "Starting job at $(date)"
+echo "Running on node: $SLURM_NODELIST"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
-echo "Node: $SLURM_NODELIST"
-echo "Start time: $(date)"
-echo ""
 
-# Setup paths
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NOTEBOOKS_DIR="$REPO_DIR/notebooks"
-RESULTS_DIR="$REPO_DIR/results/learned_analytical"
-LOGS_DIR="$REPO_DIR/logs"
+# Load conda environment
+module load anaconda
+conda deactivate
+conda activate CAPP
 
-# Create directories
-mkdir -p "$RESULTS_DIR"
-mkdir -p "$LOGS_DIR"
-
-# List of edge types (24 total - adjust as needed)
-EDGE_TYPES=(
-    "AeG" "AdG" "AuG" "CbG" "CcSE" "CdG" "CpD" "Cr>G" "CrC" "CtD"
-    "CuG" "DaG" "DdG" "DpS" "DrD" "DuG" "GcG" "GiG" "GpBP" "GpCC"
-    "GpMF" "GpPW" "Gr>G" "PCiC"
+# Define array of edge files
+EDGE_FILES=(
+    "AdG.sparse.npz"
+    "AeG.sparse.npz"
+    "AuG.sparse.npz"
+    "CbG.sparse.npz"
+    "CcSE.sparse.npz"
+    "CdG.sparse.npz"
+    "CpD.sparse.npz"
+    "CrC.sparse.npz"
+    "CtD.sparse.npz"
+    "CuG.sparse.npz"
+    "DaG.sparse.npz"
+    "DdG.sparse.npz"
+    "DlA.sparse.npz"
+    "DpS.sparse.npz"
+    "DrD.sparse.npz"
+    "DuG.sparse.npz"
+    "GcG.sparse.npz"
+    "GiG.sparse.npz"
+    "GpBP.sparse.npz"
+    "GpCC.sparse.npz"
+    "GpMF.sparse.npz"
+    "GpPW.sparse.npz"
+    "Gr>G.sparse.npz"
+    "PCiC.sparse.npz"
 )
 
-# Get edge type for this array task
-EDGE_TYPE="${EDGE_TYPES[$SLURM_ARRAY_TASK_ID]}"
+# Get the edge file for this array task
+EDGE_FILE=${EDGE_FILES[$((SLURM_ARRAY_TASK_ID-1))]}
+EDGE_TYPE=${EDGE_FILE%.sparse.npz}
 
 echo "Processing edge type: $EDGE_TYPE"
-echo "------------------------------------------------------------------------"
+echo "Edge file: $EDGE_FILE"
+
 
 # Check if edge type exists
-EDGE_FILE="$REPO_DIR/data/permutations/000.hetmat/edges/${EDGE_TYPE}.sparse.npz"
+EDGE_FILE="$data_dir/permutations/000.hetmat/edges/${EDGE_TYPE}.sparse.npz"
 if [ ! -f "$EDGE_FILE" ]; then
     echo "ERROR: Edge file not found: $EDGE_FILE"
     echo "Skipping $EDGE_TYPE"
@@ -53,19 +87,13 @@ if [ ! -f "$EDGE_FILE" ]; then
 fi
 
 # Check if empirical frequencies exist
-EMPIRICAL_FILE="$REPO_DIR/results/empirical_edge_frequencies/edge_frequency_by_degree_${EDGE_TYPE}.csv"
+EMPIRICAL_FILE="$results_dir/empirical_edge_frequencies/edge_frequency_by_degree_${EDGE_TYPE}.csv"
 if [ ! -f "$EMPIRICAL_FILE" ]; then
     echo "ERROR: Empirical frequency file not found: $EMPIRICAL_FILE"
     echo "Run notebook 3 (edge_frequency_by_degree) first"
     exit 1
 fi
 
-# Load conda/module environment (adjust for your HPC)
-# module load python/3.10
-# source activate CAPP
-# OR
-# module load anaconda
-# conda activate CAPP
 
 # Papermill parameters
 N_CANDIDATES="[2, 3, 5, 7, 10, 15, 20, 30, 40, 50]"
@@ -87,7 +115,8 @@ echo "  Target metric: $TARGET_METRIC >= $MIN_METRIC_VALUE"
 echo ""
 
 # Output notebook path
-OUTPUT_NOTEBOOK="$RESULTS_DIR/${EDGE_TYPE}_learned_analytical_executed.ipynb"
+mkdir -p "$notebooks_dir/outputs/learned_analytical"
+OUTPUT_NOTEBOOK="$notebooks_dir/outputs/learned_analytical/8_${EDGE_TYPE}_learned_analytical_executed.ipynb"
 
 # Run notebook with papermill
 echo "Executing notebook with papermill..."
@@ -113,7 +142,7 @@ if [ $PAPERMILL_EXIT_CODE -eq 0 ]; then
     echo "  Output: $OUTPUT_NOTEBOOK"
 
     # Check if results were created
-    RESULTS_FILE="$RESULTS_DIR/${EDGE_TYPE}_results/${EDGE_TYPE}_learned_predictions.csv.gz"
+    RESULTS_FILE="$results_dir/${EDGE_TYPE}_results/${EDGE_TYPE}_learned_predictions.csv.gz"
     if [ -f "$RESULTS_FILE" ]; then
         echo "  Predictions: $RESULTS_FILE"
         FILE_SIZE=$(du -h "$RESULTS_FILE" | cut -f1)
