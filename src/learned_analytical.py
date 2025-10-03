@@ -30,11 +30,22 @@ class LearnedAnalyticalFormula:
         α, β, γ, δ, ε, ζ, η, θ, κ: learnable parameters
     """
 
-    def __init__(self):
+    def __init__(self, n_random_starts=10, regularization_lambda=0.001,
+                 formula_type='original', bootstrap_samples=1, ensemble_size=1):
         self.params = None
         self.graph_stats = {}
         self.convergence_history = []
         self.param_names = ['α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'κ']
+
+        # Configuration
+        self.n_random_starts = n_random_starts
+        self.regularization_lambda = regularization_lambda
+        self.formula_type = formula_type  # 'original', 'extended', 'polynomial'
+        self.bootstrap_samples = bootstrap_samples
+        self.ensemble_size = ensemble_size
+
+        # For ensemble
+        self.ensemble_params = []
 
     def find_minimum_permutations(
         self,
@@ -285,39 +296,159 @@ class LearnedAnalyticalFormula:
             predictions = np.array(predictions)
             mse = np.mean((predictions - y_train) ** 2)
 
-            # L2 regularization
-            l2_penalty = 0.001 * np.sum(params ** 2)
+            # L2 regularization (configurable)
+            l2_penalty = self.regularization_lambda * np.sum(params ** 2)
 
             return mse + l2_penalty
 
-        # Initial parameters
-        initial_params = np.array([1.0, 1.0, 1.0, 1.0, 1e-6, 1.0, 2.0, 0.0, 1.0])
+        # Bounds and initial parameters based on formula type
+        if self.formula_type == 'extended':
+            # Extended formula: 11 parameters
+            bounds = [
+                (0.001, 100.0),   # α
+                (0.1, 3.0),       # β
+                (0.1, 3.0),       # γ
+                (0.001, 1000.0),  # δ
+                (1e-10, 1.0),     # ε
+                (0.001, 1000.0),  # ζ
+                (0.5, 3.0),       # η
+                (0.0, 1000.0),    # θ
+                (0.1, 3.0),       # κ
+                (0.0, 1000.0),    # λ (log term for u)
+                (0.0, 1000.0)     # μ (log term for v)
+            ]
+            default_params = np.array([1.0, 1.0, 1.0, 1.0, 1e-6, 1.0, 2.0, 0.0, 1.0, 0.0, 0.0])
+            self.param_names = ['α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'κ', 'λ', 'μ']
 
-        # Bounds
-        bounds = [
-            (0.001, 100.0),   # α
-            (0.1, 3.0),       # β
-            (0.1, 3.0),       # γ
-            (0.001, 1000.0),  # δ
-            (1e-10, 1.0),     # ε
-            (0.001, 1000.0),  # ζ
-            (0.5, 3.0),       # η
-            (0.0, 1000.0),    # θ
-            (0.1, 3.0)        # κ
-        ]
+        elif self.formula_type == 'polynomial':
+            # Polynomial formula: 9 parameters (different meaning)
+            bounds = [
+                (0.001, 100.0),   # α (coef for u×v in numerator)
+                (0.0, 100.0),     # β (coef for u in numerator)
+                (0.0, 100.0),     # γ (coef for v in numerator)
+                (0.0, 100.0),     # δ (constant in numerator)
+                (1e-10, 1.0),     # ε (coef for m in denominator)
+                (0.001, 100.0),   # ζ (coef for u×v in denominator)
+                (0.0, 100.0),     # η (coef for u+v in denominator)
+                (0.001, 1000.0),  # θ (constant in denominator)
+                (0.0, 1000.0)     # ι (coef for density in denominator)
+            ]
+            default_params = np.array([1.0, 0.1, 0.1, 0.01, 1e-6, 1.0, 0.1, 1.0, 0.0])
+            self.param_names = ['α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'ι']
 
-        # Optimize with L-BFGS-B
-        result = minimize(
-            loss_function,
-            x0=initial_params,
-            method='L-BFGS-B',
-            bounds=bounds,
-            options={'maxiter': 1000, 'ftol': 1e-8, 'disp': False}
-        )
+        else:  # original
+            # Original formula: 9 parameters
+            bounds = [
+                (0.001, 100.0),   # α
+                (0.1, 3.0),       # β
+                (0.1, 3.0),       # γ
+                (0.001, 1000.0),  # δ
+                (1e-10, 1.0),     # ε
+                (0.001, 1000.0),  # ζ
+                (0.5, 3.0),       # η
+                (0.0, 1000.0),    # θ
+                (0.1, 3.0)        # κ
+            ]
+            default_params = np.array([1.0, 1.0, 1.0, 1.0, 1e-6, 1.0, 2.0, 0.0, 1.0])
+            # param_names already set in __init__
 
-        self.params = result.x
+        # Bootstrap + multi-start optimization
+        all_bootstrap_params = []
 
-        # Compute training metrics
+        if self.bootstrap_samples > 1:
+            print(f"  Running bootstrap training ({self.bootstrap_samples} bootstrap samples, {self.n_random_starts} starts each)...")
+        else:
+            print(f"  Running multi-start optimization ({self.n_random_starts} starts, formula={self.formula_type})...")
+
+        for bootstrap_idx in range(self.bootstrap_samples):
+            # Bootstrap sampling (with replacement)
+            if self.bootstrap_samples > 1:
+                n_samples = len(X_train)
+                bootstrap_indices = np.random.choice(n_samples, size=n_samples, replace=True)
+                X_bootstrap = X_train[bootstrap_indices]
+                y_bootstrap = y_train[bootstrap_indices]
+
+                # Create bootstrap-specific loss function
+                def bootstrap_loss_function(params):
+                    predictions = []
+                    for u, v, m_val, d in X_bootstrap:
+                        p = self._formula(u, v, m_val, d, params)
+                        predictions.append(p)
+
+                    predictions = np.array(predictions)
+                    mse = np.mean((predictions - y_bootstrap) ** 2)
+                    l2_penalty = self.regularization_lambda * np.sum(params ** 2)
+                    return mse + l2_penalty
+
+                current_loss_function = bootstrap_loss_function
+            else:
+                X_bootstrap = X_train
+                y_bootstrap = y_train
+                current_loss_function = loss_function
+
+            # Multi-start optimization for this bootstrap sample
+            best_result = None
+            best_loss = float('inf')
+
+            for start_idx in range(self.n_random_starts):
+                # Generate random initial parameters
+                if start_idx == 0:
+                    # First start: use sensible defaults
+                    initial_params = default_params.copy()
+                else:
+                    # Random starts: sample uniformly from bounds
+                    initial_params = np.array([
+                        np.random.uniform(bounds[i][0], bounds[i][1])
+                        for i in range(len(bounds))
+                    ])
+
+                # Optimize
+                result = minimize(
+                    current_loss_function,
+                    x0=initial_params,
+                    method='L-BFGS-B',
+                    bounds=bounds,
+                    options={'maxiter': 1000, 'ftol': 1e-8, 'disp': False}
+                )
+
+                # Keep track of best result for this bootstrap
+                if result.fun < best_loss:
+                    best_loss = result.fun
+                    best_result = result
+
+            # Store parameters from this bootstrap sample
+            all_bootstrap_params.append(best_result.x)
+
+            if self.bootstrap_samples > 1:
+                print(f"    Bootstrap {bootstrap_idx + 1}/{self.bootstrap_samples}: loss = {best_loss:.6f}")
+
+        # Average parameters across bootstrap samples (or use single if bootstrap_samples=1)
+        self.params = np.mean(all_bootstrap_params, axis=0)
+
+        # Store ensemble params for ensemble prediction
+        if self.ensemble_size > 1:
+            # Keep top ensemble_size models by loss on full training set
+            losses = []
+            for params in all_bootstrap_params:
+                loss = loss_function(params)
+                losses.append(loss)
+
+            # Sort by loss and keep top ensemble_size
+            sorted_indices = np.argsort(losses)[:self.ensemble_size]
+            self.ensemble_params = [all_bootstrap_params[i] for i in sorted_indices]
+
+            avg_loss = np.mean([losses[i] for i in sorted_indices])
+            print(f"  Ensemble: using top {self.ensemble_size} models (avg loss = {avg_loss:.6f})")
+        else:
+            self.ensemble_params = [self.params]
+
+        if self.bootstrap_samples > 1:
+            final_loss = loss_function(self.params)
+            print(f"  Averaged parameters: loss = {final_loss:.6f}")
+        else:
+            print(f"  Best loss: {best_loss:.6f} (from {self.n_random_starts} starts)")
+
+        # Compute training metrics using averaged/final parameters
         train_predictions = []
         for u, v, m_val, d in X_train:
             p = self._formula(u, v, m_val, d, self.params)
@@ -327,8 +458,8 @@ class LearnedAnalyticalFormula:
 
         return {
             'train_metrics': train_metrics,
-            'success': result.success,
-            'iterations': result.nit
+            'success': True,  # Always true if we completed all bootstraps
+            'iterations': self.n_random_starts * self.bootstrap_samples  # Total optimization runs
         }
 
     def _validate_against_empirical_200(self, empirical_200: Dict[Tuple[int, int], float],
@@ -339,7 +470,18 @@ class LearnedAnalyticalFormula:
         val_targets = []
 
         for (u, v), freq_200 in empirical_200.items():
-            p_pred = self._formula(u, v, m, density, self.params)
+            # Use ensemble prediction if ensemble_size > 1
+            if self.ensemble_size > 1 and len(self.ensemble_params) > 1:
+                # Average predictions from ensemble members
+                ensemble_preds = []
+                for params in self.ensemble_params:
+                    p = self._formula(u, v, m, density, params)
+                    ensemble_preds.append(p)
+                p_pred = np.mean(ensemble_preds)
+            else:
+                # Single model prediction
+                p_pred = self._formula(u, v, m, density, self.params)
+
             val_predictions.append(p_pred)
             val_targets.append(freq_200)
 
@@ -408,7 +550,18 @@ class LearnedAnalyticalFormula:
                 u = source_degrees[i]
                 v = target_degrees[j]
 
-                p_learned = self._formula(u, v, m, density, self.params)
+                # Use ensemble prediction if ensemble_size > 1
+                if self.ensemble_size > 1 and len(self.ensemble_params) > 1:
+                    # Average predictions from ensemble members
+                    ensemble_preds = []
+                    for params in self.ensemble_params:
+                        p = self._formula(u, v, m, density, params)
+                        ensemble_preds.append(p)
+                    p_learned = np.mean(ensemble_preds)
+                else:
+                    # Single model prediction
+                    p_learned = self._formula(u, v, m, density, self.params)
+
                 p_analytical = self._current_analytical(u, v, m)
 
                 predictions.append({
@@ -513,11 +666,69 @@ class LearnedAnalyticalFormula:
 
     def _formula(self, u: float, v: float, m: float, density: float,
                  params: np.ndarray) -> float:
-        """Parameterized analytical function"""
+        """
+        Parameterized analytical function (dispatches to specific formula type).
+        """
+        if self.formula_type == 'original':
+            return self._formula_original(u, v, m, density, params)
+        elif self.formula_type == 'extended':
+            return self._formula_extended(u, v, m, density, params)
+        elif self.formula_type == 'polynomial':
+            return self._formula_polynomial(u, v, m, density, params)
+        else:
+            raise ValueError(f"Unknown formula type: {self.formula_type}")
+
+    def _formula_original(self, u: float, v: float, m: float, density: float,
+                          params: np.ndarray) -> float:
+        """
+        Original parameterized analytical function (9 parameters).
+
+        P = α × (u^β × v^γ) / (δ + ε×m + ζ×(u×v)^η + θ×density^κ)
+        """
         α, β, γ, δ, ε, ζ, η, θ, κ = params
 
         numerator = α * (u**β * v**γ)
         denominator = δ + ε*m + ζ*(u*v)**η + θ*density**κ
+
+        if denominator < 1e-10:
+            return 0.0
+
+        p = numerator / denominator
+        return np.clip(p, 0.0, 1.0)
+
+    def _formula_extended(self, u: float, v: float, m: float, density: float,
+                          params: np.ndarray) -> float:
+        """
+        Extended formula with log terms (11 parameters).
+
+        P = α × (u^β × v^γ) / (δ + ε×m + ζ×(u×v)^η + θ×density^κ + λ×log(u+1) + μ×log(v+1))
+        """
+        if len(params) == 9:
+            # Fallback if called with 9 params
+            return self._formula_original(u, v, m, density, params)
+
+        α, β, γ, δ, ε, ζ, η, θ, κ, λ, μ = params
+
+        numerator = α * (u**β * v**γ)
+        denominator = δ + ε*m + ζ*(u*v)**η + θ*density**κ + λ*np.log(u + 1) + μ*np.log(v + 1)
+
+        if denominator < 1e-10:
+            return 0.0
+
+        p = numerator / denominator
+        return np.clip(p, 0.0, 1.0)
+
+    def _formula_polynomial(self, u: float, v: float, m: float, density: float,
+                            params: np.ndarray) -> float:
+        """
+        Polynomial formula (9 parameters).
+
+        P = (α×u×v + β×u + γ×v + δ) / (ε×m + ζ×u×v + η×(u+v) + θ + ι×density)
+        """
+        α, β, γ, δ, ε, ζ, η, θ, ι = params
+
+        numerator = α*u*v + β*u + γ*v + δ
+        denominator = ε*m + ζ*u*v + η*(u+v) + θ + ι*density
 
         if denominator < 1e-10:
             return 0.0
@@ -614,3 +825,355 @@ class LearnedAnalyticalFormula:
             empirical[(u, v)] = freq
 
         return empirical
+
+    def analyze_residuals(self, empirical_200: Dict[Tuple[int, int], float],
+                         m: int, density: float, results_dir: Path,
+                         graph_name: str):
+        """
+        Phase 4.10: Analyze residuals (predicted - empirical) and create diagnostic plots.
+
+        Parameters
+        ----------
+        empirical_200 : dict
+            200-permutation empirical frequencies
+        m : int
+            Number of edges
+        density : float
+            Graph density
+        results_dir : Path
+            Directory to save plots
+        graph_name : str
+            Graph name for plot titles
+        """
+        if self.params is None:
+            raise ValueError("Must train model first")
+
+        # Compute predictions and residuals
+        residuals_data = []
+
+        for (u, v), freq_empirical in empirical_200.items():
+            # Get predictions
+            if self.ensemble_size > 1 and len(self.ensemble_params) > 1:
+                ensemble_preds = [self._formula(u, v, m, density, p) for p in self.ensemble_params]
+                p_learned = np.mean(ensemble_preds)
+            else:
+                p_learned = self._formula(u, v, m, density, self.params)
+
+            p_analytical = self._current_analytical(u, v, m)
+
+            residuals_data.append({
+                'u': u,
+                'v': v,
+                'uv_product': u * v,
+                'empirical': freq_empirical,
+                'learned': p_learned,
+                'analytical': p_analytical,
+                'residual_learned': p_learned - freq_empirical,
+                'residual_analytical': p_analytical - freq_empirical,
+                'relative_error_learned': (p_learned - freq_empirical) / freq_empirical if freq_empirical > 0 else 0,
+                'degree_category': self._categorize_degrees(u, v)
+            })
+
+        residuals_df = pd.DataFrame(residuals_data)
+
+        # Create residual plots
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+
+        # Plot 1: Residuals vs u×v product
+        ax = axes[0, 0]
+        ax.scatter(residuals_df['uv_product'], residuals_df['residual_learned'],
+                  alpha=0.5, s=20, label='Learned', color='green')
+        ax.scatter(residuals_df['uv_product'], residuals_df['residual_analytical'],
+                  alpha=0.5, s=20, label='Current Analytical', color='orange')
+        ax.axhline(0, color='black', linestyle='--', linewidth=1)
+        ax.set_xlabel('u × v (Degree Product)', fontsize=12)
+        ax.set_ylabel('Residual (Predicted - Empirical)', fontsize=12)
+        ax.set_title(f'{graph_name} - Residuals vs Degree Product', fontsize=14, fontweight='bold')
+        ax.legend()
+        ax.grid(alpha=0.3)
+
+        # Plot 2: Residuals by degree category
+        ax = axes[0, 1]
+        categories = sorted(residuals_df['degree_category'].unique())
+        learned_by_cat = [residuals_df[residuals_df['degree_category'] == cat]['residual_learned'].values
+                         for cat in categories]
+        analytical_by_cat = [residuals_df[residuals_df['degree_category'] == cat]['residual_analytical'].values
+                            for cat in categories]
+
+        positions = np.arange(len(categories))
+        width = 0.35
+
+        bp1 = ax.boxplot(learned_by_cat, positions=positions - width/2, widths=width,
+                        patch_artist=True, showmeans=True)
+        bp2 = ax.boxplot(analytical_by_cat, positions=positions + width/2, widths=width,
+                        patch_artist=True, showmeans=True)
+
+        for patch in bp1['boxes']:
+            patch.set_facecolor('green')
+            patch.set_alpha(0.6)
+        for patch in bp2['boxes']:
+            patch.set_facecolor('orange')
+            patch.set_alpha(0.6)
+
+        ax.axhline(0, color='black', linestyle='--', linewidth=1)
+        ax.set_xticks(positions)
+        ax.set_xticklabels(categories, rotation=45, ha='right')
+        ax.set_ylabel('Residual', fontsize=12)
+        ax.set_title(f'{graph_name} - Residuals by Degree Category', fontsize=14, fontweight='bold')
+        ax.legend([bp1['boxes'][0], bp2['boxes'][0]], ['Learned', 'Current Analytical'])
+        ax.grid(axis='y', alpha=0.3)
+
+        # Plot 3: Q-Q plot for learned residuals
+        ax = axes[1, 0]
+        from scipy import stats
+        stats.probplot(residuals_df['residual_learned'], dist="norm", plot=ax)
+        ax.set_title(f'{graph_name} - Q-Q Plot (Learned Formula)', fontsize=14, fontweight='bold')
+        ax.grid(alpha=0.3)
+
+        # Plot 4: Histogram of residuals
+        ax = axes[1, 1]
+        ax.hist(residuals_df['residual_learned'], bins=50, alpha=0.7, color='green',
+               label='Learned', edgecolor='black')
+        ax.hist(residuals_df['residual_analytical'], bins=50, alpha=0.7, color='orange',
+               label='Current Analytical', edgecolor='black')
+        ax.axvline(0, color='black', linestyle='--', linewidth=2)
+        ax.set_xlabel('Residual', fontsize=12)
+        ax.set_ylabel('Frequency', fontsize=12)
+        ax.set_title(f'{graph_name} - Residual Distribution', fontsize=14, fontweight='bold')
+        ax.legend()
+        ax.grid(alpha=0.3)
+
+        plt.tight_layout()
+        output_path = results_dir / f'residual_analysis_{graph_name}.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        print(f"Residual analysis saved to: {output_path}")
+
+        # Print summary statistics
+        print(f"\n{'='*60}")
+        print(f"RESIDUAL ANALYSIS SUMMARY - {graph_name}")
+        print(f"{'='*60}")
+        print(f"\nLearned Formula:")
+        print(f"  Mean residual: {residuals_df['residual_learned'].mean():.6f}")
+        print(f"  Std residual: {residuals_df['residual_learned'].std():.6f}")
+        print(f"  RMSE: {np.sqrt(np.mean(residuals_df['residual_learned']**2)):.6f}")
+
+        print(f"\nCurrent Analytical:")
+        print(f"  Mean residual: {residuals_df['residual_analytical'].mean():.6f}")
+        print(f"  Std residual: {residuals_df['residual_analytical'].std():.6f}")
+        print(f"  RMSE: {np.sqrt(np.mean(residuals_df['residual_analytical']**2)):.6f}")
+
+        return residuals_df
+
+    def _categorize_degrees(self, u: int, v: int) -> str:
+        """Categorize degree pairs for analysis"""
+        uv = u * v
+        if uv < 10:
+            return 'Very Low (<10)'
+        elif uv < 100:
+            return 'Low (10-100)'
+        elif uv < 1000:
+            return 'Medium (100-1k)'
+        elif uv < 10000:
+            return 'High (1k-10k)'
+        else:
+            return 'Very High (>10k)'
+
+    def analyze_parameter_importance(self, empirical_200: Dict[Tuple[int, int], float],
+                                    m: int, density: float, graph_name: str,
+                                    results_dir: Path):
+        """
+        Phase 4.11: Analyze parameter importance via sensitivity analysis.
+
+        Perturbs each parameter by ±10% and measures impact on predictions.
+        """
+        if self.params is None:
+            raise ValueError("Must train model first")
+
+        print(f"\n{'='*60}")
+        print(f"PARAMETER IMPORTANCE ANALYSIS - {graph_name}")
+        print(f"{'='*60}")
+
+        # Use averaged params for analysis
+        params = self.params.copy()
+
+        # Baseline predictions
+        baseline_preds = []
+        targets = []
+        for (u, v), freq in empirical_200.items():
+            p = self._formula(u, v, m, density, params)
+            baseline_preds.append(p)
+            targets.append(freq)
+
+        baseline_preds = np.array(baseline_preds)
+        targets = np.array(targets)
+        baseline_corr = np.corrcoef(baseline_preds, targets)[0, 1]
+
+        # Sensitivity analysis: perturb each parameter
+        sensitivities = []
+
+        for i, param_name in enumerate(self.param_names):
+            # Perturb +10%
+            params_plus = params.copy()
+            params_plus[i] *= 1.1
+
+            preds_plus = []
+            for (u, v), _ in empirical_200.items():
+                p = self._formula(u, v, m, density, params_plus)
+                preds_plus.append(p)
+            preds_plus = np.array(preds_plus)
+            corr_plus = np.corrcoef(preds_plus, targets)[0, 1]
+
+            # Perturb -10%
+            params_minus = params.copy()
+            params_minus[i] *= 0.9
+
+            preds_minus = []
+            for (u, v), _ in empirical_200.items():
+                p = self._formula(u, v, m, density, params_minus)
+                preds_minus.append(p)
+            preds_minus = np.array(preds_minus)
+            corr_minus = np.corrcoef(preds_minus, targets)[0, 1]
+
+            # Sensitivity = average change in correlation
+            sensitivity = (abs(corr_plus - baseline_corr) + abs(corr_minus - baseline_corr)) / 2
+
+            sensitivities.append({
+                'parameter': param_name,
+                'value': params[i],
+                'sensitivity': sensitivity,
+                'corr_plus': corr_plus,
+                'corr_minus': corr_minus
+            })
+
+        sens_df = pd.DataFrame(sensitivities)
+        sens_df = sens_df.sort_values('sensitivity', ascending=False)
+
+        # Print results
+        print(f"\nBaseline correlation: {baseline_corr:.6f}\n")
+        print(f"{'Parameter':<12} {'Value':<12} {'Sensitivity':<12} {'Impact'}")
+        print(f"{'-'*60}")
+        for _, row in sens_df.iterrows():
+            impact = 'HIGH' if row['sensitivity'] > 0.01 else 'MEDIUM' if row['sensitivity'] > 0.001 else 'LOW'
+            print(f"{row['parameter']:<12} {row['value']:<12.4f} {row['sensitivity']:<12.6f} {impact}")
+
+        # Visualize
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        colors = ['red' if s > 0.01 else 'orange' if s > 0.001 else 'green'
+                 for s in sens_df['sensitivity']]
+
+        ax.barh(sens_df['parameter'], sens_df['sensitivity'], color=colors, alpha=0.7, edgecolor='black')
+        ax.set_xlabel('Sensitivity (Avg Δ Correlation)', fontsize=12)
+        ax.set_ylabel('Parameter', fontsize=12)
+        ax.set_title(f'{graph_name} - Parameter Importance ({self.formula_type})',
+                    fontsize=14, fontweight='bold')
+        ax.grid(axis='x', alpha=0.3)
+
+        # Add legend
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor='red', alpha=0.7, label='High (>0.01)'),
+            Patch(facecolor='orange', alpha=0.7, label='Medium (>0.001)'),
+            Patch(facecolor='green', alpha=0.7, label='Low (≤0.001)')
+        ]
+        ax.legend(handles=legend_elements, loc='lower right')
+
+        plt.tight_layout()
+        output_path = results_dir / f'parameter_importance_{graph_name}.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        print(f"\nParameter importance plot saved to: {output_path}")
+
+        return sens_df
+
+    def create_comparison_plots(self, results_by_phase: Dict[str, Dict],
+                               results_dir: Path, graph_name: str):
+        """
+        Phase 4.12: Create side-by-side comparison visualizations across phases.
+
+        Parameters
+        ----------
+        results_by_phase : dict
+            {
+                'baseline': {...},
+                'phase1': {...},
+                'phase2_original': {...},
+                'phase2_extended': {...},
+                'phase2_polynomial': {...},
+                'phase3': {...}
+            }
+        results_dir : Path
+            Output directory
+        graph_name : str
+            Graph name
+        """
+        print(f"\n{'='*60}")
+        print(f"CREATING COMPARISON VISUALIZATIONS - {graph_name}")
+        print(f"{'='*60}")
+
+        # Extract correlations
+        phase_names = list(results_by_phase.keys())
+        correlations = [results_by_phase[phase]['correlation'] for phase in phase_names]
+        maes = [results_by_phase[phase]['mae'] for phase in phase_names]
+
+        # Create comparison plot
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+        # Plot 1: Correlation comparison
+        ax = axes[0]
+        colors = ['orange'] + ['green'] * (len(phase_names) - 1)
+        bars = ax.bar(range(len(phase_names)), correlations, color=colors, alpha=0.7, edgecolor='black')
+
+        # Add value labels
+        for i, (bar, corr) in enumerate(zip(bars, correlations)):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 0.005,
+                   f'{corr:.4f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+
+        ax.set_xticks(range(len(phase_names)))
+        ax.set_xticklabels(phase_names, rotation=45, ha='right')
+        ax.set_ylabel('Correlation with Empirical', fontsize=12)
+        ax.set_title(f'{graph_name} - Correlation Improvement by Phase', fontsize=14, fontweight='bold')
+        ax.grid(axis='y', alpha=0.3)
+        ax.set_ylim([min(correlations) * 0.95, 1.0])
+
+        # Plot 2: MAE comparison
+        ax = axes[1]
+        bars = ax.bar(range(len(phase_names)), maes, color=colors, alpha=0.7, edgecolor='black')
+
+        # Add value labels
+        for i, (bar, mae) in enumerate(zip(bars, maes)):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + height*0.02,
+                   f'{mae:.4f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+
+        ax.set_xticks(range(len(phase_names)))
+        ax.set_xticklabels(phase_names, rotation=45, ha='right')
+        ax.set_ylabel('Mean Absolute Error', fontsize=12)
+        ax.set_title(f'{graph_name} - MAE Reduction by Phase', fontsize=14, fontweight='bold')
+        ax.grid(axis='y', alpha=0.3)
+
+        plt.tight_layout()
+        output_path = results_dir / f'phase_comparison_{graph_name}.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        print(f"Comparison plot saved to: {output_path}")
+
+        # Print summary table
+        print(f"\n{'Phase':<20} {'Correlation':<15} {'MAE':<15} {'vs Baseline'}")
+        print(f"{'-'*70}")
+        baseline_corr = correlations[0]
+        baseline_mae = maes[0]
+
+        for phase, corr, mae in zip(phase_names, correlations, maes):
+            if phase == 'baseline':
+                vs_baseline = '-'
+            else:
+                corr_improvement = (corr - baseline_corr) / baseline_corr * 100
+                mae_improvement = (baseline_mae - mae) / baseline_mae * 100
+                vs_baseline = f'+{corr_improvement:.1f}% corr, +{mae_improvement:.1f}% MAE'
+
+            print(f"{phase:<20} {corr:<15.6f} {mae:<15.6f} {vs_baseline}")
