@@ -542,10 +542,17 @@ def run_degree_analysis_pipeline(edge_type: str,
                 print(f"  - {file.name}")
 
             # Try to generate basic analysis from available data
-            return _run_basic_degree_analysis(
+            print(f"Attempting basic degree analysis for {edge_type}...")
+            basic_result = _run_basic_degree_analysis(
                 edge_type, source_degrees, target_degrees,
                 results_subdir, output_dir, analyzer
             )
+            if basic_result:
+                print(f"Basic analysis successful, returning {len(basic_result)} results")
+                return basic_result
+            else:
+                print(f"Basic analysis failed, no results generated")
+                return {}
         else:
             print(f"Results directory not found: {results_subdir}")
             return {}
@@ -555,6 +562,12 @@ def run_degree_analysis_pipeline(edge_type: str,
         predictions_df = pd.read_csv(pred_file)
     except Exception as e:
         print(f"Error loading predictions file: {e}")
+        return {}
+
+    # Validate predictions dataframe structure
+    if 'Model' not in predictions_df.columns:
+        print(f"Error: predictions file {pred_file} missing 'Model' column")
+        print(f"Available columns: {list(predictions_df.columns)}")
         return {}
 
     # Load empirical frequencies if available
@@ -616,6 +629,14 @@ def _run_basic_degree_analysis(edge_type: str,
     try:
         comparison_df = pd.read_csv(comparison_file)
         print(f"  Loaded model comparison data with {len(comparison_df)} models")
+        print(f"  Columns: {list(comparison_df.columns)}")
+
+        # Validate required columns
+        if 'Model' not in comparison_df.columns:
+            print(f"  Error: 'Model' column not found in comparison file")
+            print(f"  Available columns: {list(comparison_df.columns)}")
+            return {}
+
     except Exception as e:
         print(f"  Error loading model comparison: {e}")
         return {}
@@ -667,12 +688,20 @@ def _run_basic_degree_analysis(edge_type: str,
     ]
 
     # Add model performance data for each degree combination
-    for idx, model_row in comparison_df.iterrows():
-        model_name = model_row['Model'].replace(' ', '_').replace('(', '').replace(')', '').lower()
-        for metric in ['AUC', 'Accuracy', 'F1 Score', 'RMSE', 'Correlation']:
-            if metric in model_row:
-                # For basic analysis, we can't break down by degree, so use overall metrics
-                degree_stats[f'{model_name}_{metric.lower().replace(" ", "_")}'] = model_row[metric]
+    try:
+        for idx, model_row in comparison_df.iterrows():
+            if 'Model' not in model_row:
+                print(f"  Warning: 'Model' column missing in row {idx}")
+                continue
+
+            model_name = model_row['Model'].replace(' ', '_').replace('(', '').replace(')', '').lower()
+            for metric in ['AUC', 'Accuracy', 'F1 Score', 'RMSE', 'Correlation']:
+                if metric in model_row:
+                    # For basic analysis, we can't break down by degree, so use overall metrics
+                    degree_stats[f'{model_name}_{metric.lower().replace(" ", "_")}'] = model_row[metric]
+    except Exception as e:
+        print(f"  Warning: Error adding model performance data: {e}")
+        print(f"  Continuing with basic analysis only...")
 
     # Save basic analysis results
     basic_output_dir = output_dir / f'{edge_type}_basic_analysis'
