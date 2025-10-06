@@ -604,46 +604,75 @@ def _run_basic_degree_analysis(edge_type: str,
     without detailed model predictions.
     """
     print(f"Running basic degree analysis for {edge_type}...")
+    print(f"  Source degrees shape: {source_degrees.shape}, range: {source_degrees.min()}-{source_degrees.max()}")
+    print(f"  Target degrees shape: {target_degrees.shape}, range: {target_degrees.min()}-{target_degrees.max()}")
 
-    # Create degree distribution analysis
+    # Try to load model comparison results that should exist
+    comparison_file = results_subdir / 'model_comparison.csv'
+    if not comparison_file.exists():
+        print(f"Model comparison file not found: {comparison_file}")
+        return {}
+
+    try:
+        comparison_df = pd.read_csv(comparison_file)
+        print(f"  Loaded model comparison data with {len(comparison_df)} models")
+    except Exception as e:
+        print(f"  Error loading model comparison: {e}")
+        return {}
+
+    # Create degree distribution analysis based on unique degree values
+    unique_source_degrees = np.unique(source_degrees[source_degrees > 0])
+    unique_target_degrees = np.unique(target_degrees[target_degrees > 0])
+
     analysis_data = []
 
-    # Analyze all possible source-target combinations
-    for i in range(len(source_degrees)):
-        for j in range(len(target_degrees)):
-            if source_degrees[i] > 0 and target_degrees[j] > 0:  # Skip zero-degree nodes
-                u = source_degrees[i]
-                v = target_degrees[j]
+    # Analyze degree combinations that actually exist in the graph
+    for u in unique_source_degrees:
+        for v in unique_target_degrees:
+            # Categorize degrees
+            u_category = analyzer.categorize_degrees(np.array([u]))[0]
+            v_category = analyzer.categorize_degrees(np.array([v]))[0]
+            degree_combination = analyzer.create_degree_combination_labels(
+                np.array([u_category]), np.array([v_category])
+            )[0]
 
-                # Categorize degrees
-                u_category = analyzer.categorize_degrees(np.array([u]))[0]
-                v_category = analyzer.categorize_degrees(np.array([v]))[0]
-                degree_combination = analyzer.create_degree_combination_labels(
-                    np.array([u_category]), np.array([v_category])
-                )[0]
+            # Count how many nodes have these degrees
+            n_source_nodes = np.sum(source_degrees == u)
+            n_target_nodes = np.sum(target_degrees == v)
+            n_possible_pairs = n_source_nodes * n_target_nodes
 
-                analysis_data.append({
-                    'source_index': i,
-                    'target_index': j,
-                    'source_degree': u,
-                    'target_degree': v,
-                    'source_category': str(u_category),
-                    'target_category': str(v_category),
-                    'degree_combination': degree_combination
-                })
+            analysis_data.append({
+                'source_degree': u,
+                'target_degree': v,
+                'source_category': str(u_category),
+                'target_category': str(v_category),
+                'degree_combination': degree_combination,
+                'n_source_nodes': n_source_nodes,
+                'n_target_nodes': n_target_nodes,
+                'n_possible_pairs': n_possible_pairs
+            })
 
     analysis_df = pd.DataFrame(analysis_data)
 
     # Create basic statistics by degree combination
     degree_stats = analysis_df.groupby('degree_combination').agg({
         'source_degree': ['count', 'mean', 'std'],
-        'target_degree': ['mean', 'std']
+        'target_degree': ['mean', 'std'],
+        'n_possible_pairs': ['sum']
     }).round(4)
 
     degree_stats.columns = [
-        'n_pairs', 'source_degree_mean', 'source_degree_std',
-        'target_degree_mean', 'target_degree_std'
+        'n_degree_combinations', 'source_degree_mean', 'source_degree_std',
+        'target_degree_mean', 'target_degree_std', 'total_possible_pairs'
     ]
+
+    # Add model performance data for each degree combination
+    for idx, model_row in comparison_df.iterrows():
+        model_name = model_row['Model'].replace(' ', '_').replace('(', '').replace(')', '').lower()
+        for metric in ['AUC', 'Accuracy', 'F1 Score', 'RMSE', 'Correlation']:
+            if metric in model_row:
+                # For basic analysis, we can't break down by degree, so use overall metrics
+                degree_stats[f'{model_name}_{metric.lower().replace(" ", "_")}'] = model_row[metric]
 
     # Save basic analysis results
     basic_output_dir = output_dir / f'{edge_type}_basic_analysis'
@@ -664,20 +693,25 @@ def _run_basic_degree_analysis(edge_type: str,
         # Create degree combination distribution plot
         fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
-        # Plot 1: Sample size by degree combination
-        degree_counts = analysis_df['degree_combination'].value_counts()
-        degree_counts.plot(kind='bar', ax=axes[0], color='skyblue', edgecolor='black')
-        axes[0].set_title(f'{edge_type} - Node Pairs by Degree Combination', fontsize=14, fontweight='bold')
+        # Plot 1: Sample size by degree combination (using possible pairs)
+        degree_pairs = analysis_df.groupby('degree_combination')['n_possible_pairs'].sum().sort_values(ascending=False)
+        degree_pairs.plot(kind='bar', ax=axes[0], color='skyblue', edgecolor='black')
+        axes[0].set_title(f'{edge_type} - Possible Node Pairs by Degree Combination', fontsize=14, fontweight='bold')
         axes[0].set_xlabel('Degree Combination', fontsize=12)
-        axes[0].set_ylabel('Number of Node Pairs', fontsize=12)
+        axes[0].set_ylabel('Number of Possible Node Pairs', fontsize=12)
         axes[0].grid(axis='y', alpha=0.3)
         axes[0].set_xticklabels(axes[0].get_xticklabels(), rotation=45, ha='right')
 
-        # Plot 2: Degree distribution heatmap
-        degree_pivot = analysis_df.groupby(['source_category', 'target_category']).size().unstack(fill_value=0)
+        # Add counts on top of bars
+        for i, v in enumerate(degree_pairs.values):
+            axes[0].text(i, v + max(degree_pairs.values) * 0.01, f'{int(v):,}',
+                        ha='center', va='bottom', fontsize=10)
+
+        # Plot 2: Degree distribution heatmap (using possible pairs)
+        degree_pivot = analysis_df.groupby(['source_category', 'target_category'])['n_possible_pairs'].sum().unstack(fill_value=0)
         import seaborn as sns
         sns.heatmap(degree_pivot, annot=True, fmt='d', cmap='Blues', ax=axes[1],
-                   cbar_kws={'label': 'Number of Pairs'})
+                   cbar_kws={'label': 'Possible Node Pairs'})
         axes[1].set_title(f'{edge_type} - Degree Category Distribution', fontsize=14, fontweight='bold')
         axes[1].set_xlabel('Target Degree Category', fontsize=12)
         axes[1].set_ylabel('Source Degree Category', fontsize=12)
