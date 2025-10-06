@@ -564,11 +564,22 @@ def run_degree_analysis_pipeline(edge_type: str,
         print(f"Error loading predictions file: {e}")
         return {}
 
-    # Validate predictions dataframe structure
+    # Check predictions dataframe structure and adapt accordingly
     if 'Model' not in predictions_df.columns:
-        print(f"Error: predictions file {pred_file} missing 'Model' column")
+        # Handle wide format (separate columns for each model)
+        print(f"Note: predictions file has wide format (separate model columns)")
         print(f"Available columns: {list(predictions_df.columns)}")
-        return {}
+
+        # Convert from wide to long format
+        predictions_df_long = _convert_wide_to_long_format(predictions_df)
+        if predictions_df_long is not None:
+            predictions_df = predictions_df_long
+            print(f"Successfully converted to long format with {len(predictions_df)} rows")
+        else:
+            print(f"Error: Could not convert wide format predictions")
+            return {}
+    else:
+        print(f"Using long format predictions with Model column")
 
     # Load empirical frequencies if available
     empirical_file = results_dir.parent / 'empirical_edge_frequencies' / f'edge_frequency_by_degree_{edge_type}.csv'
@@ -602,6 +613,63 @@ def run_degree_analysis_pipeline(edge_type: str,
         all_file_paths[model] = file_paths
 
     return all_file_paths
+
+
+def _convert_wide_to_long_format(predictions_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+    """
+    Convert wide format predictions (separate columns per model) to long format.
+
+    Expected wide format:
+    - source_index, target_index, source_degree, target_degree, degree_product, edge_exists
+    - model_name_prediction columns (e.g., simple_nn_prediction, random_forest_prediction)
+
+    Returns long format:
+    - source_index, target_index, source_degree, target_degree, degree_product, edge_exists
+    - Model, predicted_prob columns
+    """
+    try:
+        # Identify prediction columns
+        prediction_cols = [col for col in predictions_df.columns if col.endswith('_prediction')]
+
+        if not prediction_cols:
+            print("  No prediction columns found (columns ending with '_prediction')")
+            return None
+
+        print(f"  Found {len(prediction_cols)} prediction columns: {prediction_cols}")
+
+        # Base columns that should be preserved
+        base_cols = ['source_index', 'target_index', 'source_degree', 'target_degree',
+                     'degree_product', 'edge_exists']
+        missing_base_cols = [col for col in base_cols if col not in predictions_df.columns]
+        if missing_base_cols:
+            print(f"  Warning: Missing expected base columns: {missing_base_cols}")
+
+        available_base_cols = [col for col in base_cols if col in predictions_df.columns]
+
+        # Convert to long format
+        long_dfs = []
+        for pred_col in prediction_cols:
+            # Extract model name from column name (remove '_prediction' suffix)
+            model_name = pred_col.replace('_prediction', '').replace('_', ' ').title()
+            model_name = model_name.replace('Nn', 'NN')  # Fix Neural Network name
+
+            # Create long format for this model
+            model_df = predictions_df[available_base_cols + [pred_col]].copy()
+            model_df['Model'] = model_name
+            model_df['predicted_prob'] = model_df[pred_col]
+            model_df = model_df.drop(columns=[pred_col])
+
+            long_dfs.append(model_df)
+
+        # Combine all models
+        long_df = pd.concat(long_dfs, ignore_index=True)
+
+        print(f"  Converted models: {long_df['Model'].unique().tolist()}")
+        return long_df
+
+    except Exception as e:
+        print(f"  Error converting wide to long format: {e}")
+        return None
 
 
 def _run_basic_degree_analysis(edge_type: str,
