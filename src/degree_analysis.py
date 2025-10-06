@@ -891,14 +891,23 @@ def run_degree_analysis_pipeline(edge_type: str,
 
         # Convert from wide to long format
         predictions_df_long = _convert_wide_to_long_format(predictions_df)
-        if predictions_df_long is not None:
+        if predictions_df_long is not None and 'Model' in predictions_df_long.columns:
             predictions_df = predictions_df_long
             print(f"Successfully converted to long format with {len(predictions_df)} rows")
+            print(f"Models found: {predictions_df['Model'].unique().tolist()}")
         else:
-            print(f"Error: Could not convert wide format predictions")
+            print(f"Error: Could not convert wide format predictions or Model column missing")
+            if predictions_df_long is not None:
+                print(f"Conversion result columns: {list(predictions_df_long.columns)}")
             return {}
     else:
         print(f"Using long format predictions with Model column")
+
+    # Final validation
+    if 'Model' not in predictions_df.columns:
+        print(f"Error: After conversion attempt, 'Model' column still not found in predictions")
+        print(f"Final columns: {list(predictions_df.columns)}")
+        return {}
 
     # Load empirical frequencies if available
     empirical_file = results_dir.parent / 'empirical_edge_frequencies' / f'edge_frequency_by_degree_{edge_type}.csv'
