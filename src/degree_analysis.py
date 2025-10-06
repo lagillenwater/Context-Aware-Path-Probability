@@ -16,35 +16,8 @@ from typing import Dict, List, Tuple, Optional, Union
 import warnings
 warnings.filterwarnings('ignore')
 
-# Basic analytical approximation formula
-def compute_basic_analytical_approximation(u: float, v: float, m: int) -> float:
-    """
-    Compute basic analytical approximation for edge probability.
-
-    Formula: P(u,v) = (u*v) / sqrt((u*v)^2 + (m - u - v + 1)^2)
-
-    Parameters
-    ----------
-    u : float
-        Source degree
-    v : float
-        Target degree
-    m : int
-        Total number of edges
-
-    Returns
-    -------
-    prob : float
-        Analytical probability estimate
-    """
-    numerator = u * v
-    denominator_term = m - u - v + 1
-    denominator = np.sqrt((u * v)**2 + denominator_term**2)
-
-    if denominator == 0:
-        return 0.0
-
-    return numerator / denominator
+# Degree analysis focuses on loading and aggregating existing results
+# Analytical approximation should be loaded from existing benchmark results
 
 
 class DegreeAnalyzer:
@@ -121,64 +94,37 @@ class DegreeAnalyzer:
 
         return source_degrees, target_degrees
 
-    def add_basic_analytical_approximation(self,
-                                         predictions_df: pd.DataFrame,
-                                         edge_type: str,
-                                         source_degrees: np.ndarray,
-                                         target_degrees: np.ndarray) -> pd.DataFrame:
+    def load_analytical_benchmark(self, edge_type: str, results_dir: Path) -> Optional[pd.DataFrame]:
         """
-        Add basic analytical approximation to the predictions dataframe.
-
-        Formula: P(u,v) = (u*v) / sqrt((u*v)^2 + (m - u - v + 1)^2)
+        Load analytical approximation benchmark from existing model comparison results.
 
         Parameters
         ----------
-        predictions_df : pd.DataFrame
-            Model predictions dataframe
         edge_type : str
             Edge type identifier
-        source_degrees : np.ndarray
-            Source node degrees
-        target_degrees : np.ndarray
-            Target node degrees
+        results_dir : Path
+            Results directory containing model comparison files
 
         Returns
         -------
-        enhanced_df : pd.DataFrame
-            Predictions dataframe with analytical approximation added
+        analytical_df : pd.DataFrame or None
+            Analytical benchmark data, or None if not available
         """
-        enhanced_df = predictions_df.copy()
+        # Look for analytical comparison file from notebook 4
+        analytical_file = results_dir / f'{edge_type}_results' / 'models_vs_analytical_comparison.csv'
 
-        # Get total number of edges
-        if self.data_dir is None:
-            print("  Warning: data_dir not set, cannot compute analytical approximation")
-            return enhanced_df
+        if not analytical_file.exists():
+            print(f"  No analytical benchmark found for {edge_type}")
+            return None
 
-        edge_file = self.data_dir / 'permutations' / '000.hetmat' / 'edges' / f'{edge_type}.sparse.npz'
-        if not edge_file.exists():
-            print(f"  Warning: edge file not found: {edge_file}")
-            return enhanced_df
-
-        edge_matrix = sp.load_npz(str(edge_file))
-        m = edge_matrix.nnz  # Total number of edges
-
-        # Compute analytical approximation for each row
-        analytical_preds = []
-        for _, row in enhanced_df.iterrows():
-            source_idx = int(row['source_index'])
-            target_idx = int(row['target_index'])
-
-            u = source_degrees[source_idx]
-            v = target_degrees[target_idx]
-
-            # Use basic analytical approximation
-            analytical_prob = compute_basic_analytical_approximation(u, v, m)
-            analytical_preds.append(analytical_prob)
-
-        enhanced_df['analytical_approximation'] = analytical_preds
-
-        print(f"  ✓ Added analytical approximation (range: {np.min(analytical_preds):.6f} - {np.max(analytical_preds):.6f})")
-        return enhanced_df
+        try:
+            analytical_df = pd.read_csv(analytical_file)
+            print(f"  ✓ Loaded analytical benchmark from {analytical_file.name}")
+            print(f"    Models: {len(analytical_df)} with analytical comparisons")
+            return analytical_df
+        except Exception as e:
+            print(f"  ✗ Error loading analytical benchmark: {e}")
+            return None
 
     def categorize_degrees(self, degrees: np.ndarray) -> np.ndarray:
         """
@@ -960,30 +906,23 @@ def run_degree_analysis_pipeline(edge_type: str,
     if empirical_file.exists():
         empirical_df = pd.read_csv(empirical_file)
 
+    # Load analytical benchmark data (fast - just loading existing results)
+    analytical_benchmark = analyzer.load_analytical_benchmark(edge_type, results_dir)
+
     # Run analysis for each model
     all_file_paths = {}
 
     for model in predictions_df['Model'].unique():
         model_preds = predictions_df[predictions_df['Model'] == model].copy()
 
-        # Add basic analytical approximation
-        print(f"  Adding basic analytical approximation for {model}...")
-        model_preds = analyzer.add_basic_analytical_approximation(
-            model_preds, edge_type, source_degrees, target_degrees
-        )
-
         # Analyze predictions by degree
         analysis_df = analyzer.analyze_predictions_by_degree(
             model_preds, source_degrees, target_degrees, empirical_df
         )
 
-        # Compute enhanced error metrics with analytical comparisons if available
+        # Compute degree error metrics (fast - only using existing empirical data)
         if empirical_df is not None:
-            if 'analytical_approximation' in model_preds.columns:
-                print(f"  Computing enhanced metrics with analytical comparisons...")
-                metrics_df = analyzer.compute_enhanced_degree_error_metrics(analysis_df)
-            else:
-                metrics_df = analyzer.compute_degree_error_metrics(analysis_df)
+            metrics_df = analyzer.compute_degree_error_metrics(analysis_df)
         else:
             metrics_df = pd.DataFrame()
 
