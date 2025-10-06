@@ -55,17 +55,21 @@ class LearnedAnalyticalFormula:
         N_candidates: List[int] = None,
         convergence_threshold: float = 0.02,
         target_metric: str = 'correlation',
-        min_metric_value: float = 0.95
+        min_metric_value: float = 0.95,
+        degree_stratified: bool = False,
+        small_graph_mode: bool = False
     ) -> Dict[str, Any]:
         """
         Automatically find minimum N permutations needed for accurate learning.
 
-        Strategy:
+        Enhanced Strategy:
         1. Train on increasing N: [2, 3, 5, 7, 10, 15, 20, 30, 40, 50]
         2. For each N, validate against 200-perm empirical
-        3. Stop when:
+        3. If degree_stratified=True, analyze convergence by degree combinations
+        4. Stop when:
            a) Validation metric plateaus (improvement < threshold)
            b) Validation metric exceeds target
+           c) All degree combinations converge (if degree_stratified=True)
 
         Parameters
         ----------
@@ -83,6 +87,10 @@ class LearnedAnalyticalFormula:
             Metric to optimize ('correlation', 'mae', 'rmse')
         min_metric_value : float
             Target performance level
+        degree_stratified : bool
+            Whether to perform degree-stratified convergence analysis
+        small_graph_mode : bool
+            Whether to use small graph optimizations
 
         Returns
         -------
@@ -91,7 +99,8 @@ class LearnedAnalyticalFormula:
                 'N_min': minimum permutations needed,
                 'best_params': learned parameters at N_min,
                 'convergence_curve': performance vs N,
-                'final_metrics': validation metrics at N_min
+                'final_metrics': validation metrics at N_min,
+                'degree_convergence': degree-stratified analysis (if enabled)
             }
         """
 
@@ -104,6 +113,8 @@ class LearnedAnalyticalFormula:
         print(f'Testing N values: {N_candidates}')
         print(f'Target: {target_metric} > {min_metric_value}')
         print(f'Convergence threshold: {convergence_threshold} ({convergence_threshold*100}%)')
+        print(f'Degree stratified: {degree_stratified}')
+        print(f'Small graph mode: {small_graph_mode}')
         print()
 
         # Load 200-permutation empirical (validation gold standard)
@@ -147,9 +158,9 @@ class LearnedAnalyticalFormula:
                 graph_name, N, m, density, data_dir
             )
 
-            # Validate against 200-perm empirical
+            # Validate against 200-perm empirical with optional degree stratification
             val_metrics = self._validate_against_empirical_200(
-                empirical_200, m, density
+                empirical_200, m, density, degree_stratified, small_graph_mode
             )
 
             # Store results
@@ -173,6 +184,17 @@ class LearnedAnalyticalFormula:
             print(f'    MAE: {val_metrics["mae"]:.6f}')
             print(f'    RMSE: {val_metrics["rmse"]:.6f}')
             print(f'    Correlation: {val_metrics["correlation"]:.6f}')
+
+            # Print degree-stratified results if available
+            if degree_stratified and 'degree_stratified' in val_metrics:
+                degree_combos = val_metrics['degree_combinations_count']
+                degree_corr_mean = val_metrics.get('degree_correlation_mean', np.nan)
+                degree_corr_std = val_metrics.get('degree_correlation_std', np.nan)
+                print(f'  Degree-stratified ({degree_combos} combinations):')
+                if not np.isnan(degree_corr_mean):
+                    print(f'    Avg correlation: {degree_corr_mean:.6f} ± {degree_corr_std:.6f}')
+                else:
+                    print(f'    Correlation: insufficient data')
 
             current_metric = val_metrics[target_metric]
 
@@ -463,11 +485,39 @@ class LearnedAnalyticalFormula:
         }
 
     def _validate_against_empirical_200(self, empirical_200: Dict[Tuple[int, int], float],
-                                         m: int, density: float) -> Dict[str, float]:
-        """Validate learned formula against 200-permutation empirical"""
+                                         m: int, density: float,
+                                         degree_stratified: bool = False,
+                                         small_graph_mode: bool = False) -> Dict[str, float]:
+        """
+        Enhanced validation against 200-permutation empirical with optional degree stratification.
+
+        Parameters
+        ----------
+        empirical_200 : dict
+            200-permutation empirical frequencies
+        m : int
+            Number of edges
+        density : float
+            Graph density
+        degree_stratified : bool
+            Whether to include degree-stratified metrics
+        small_graph_mode : bool
+            Whether to use small graph optimizations
+
+        Returns
+        -------
+        metrics : dict
+            Validation metrics, optionally including degree-stratified results
+        """
 
         val_predictions = []
         val_targets = []
+        degree_data = []
+
+        # Initialize degree analyzer if needed
+        if degree_stratified:
+            from degree_analysis import DegreeAnalyzer
+            analyzer = DegreeAnalyzer(small_graph_mode=small_graph_mode)
 
         for (u, v), freq_200 in empirical_200.items():
             # Use ensemble prediction if ensemble_size > 1
@@ -485,7 +535,54 @@ class LearnedAnalyticalFormula:
             val_predictions.append(p_pred)
             val_targets.append(freq_200)
 
-        return self._compute_metrics(val_predictions, val_targets)
+            # Store degree information if needed
+            if degree_stratified:
+                u_category = analyzer.categorize_degrees(np.array([u]))[0]
+                v_category = analyzer.categorize_degrees(np.array([v]))[0]
+                degree_combination = analyzer.create_degree_combination_labels(
+                    np.array([u_category]), np.array([v_category])
+                )[0]
+
+                degree_data.append({
+                    'u': u, 'v': v,
+                    'predicted': p_pred,
+                    'empirical': freq_200,
+                    'degree_combination': degree_combination
+                })
+
+        # Compute overall metrics
+        overall_metrics = self._compute_metrics(val_predictions, val_targets)
+
+        # Add degree-stratified metrics if requested
+        if degree_stratified and degree_data:
+            degree_df = pd.DataFrame(degree_data)
+
+            # Compute metrics by degree combination
+            degree_metrics = {}
+            for combo in degree_df['degree_combination'].unique():
+                combo_data = degree_df[degree_df['degree_combination'] == combo]
+                if len(combo_data) >= 2:  # Need at least 2 points
+                    combo_metrics = self._compute_metrics(
+                        combo_data['predicted'].values,
+                        combo_data['empirical'].values
+                    )
+                    degree_metrics[combo] = combo_metrics
+
+            overall_metrics['degree_stratified'] = degree_metrics
+            overall_metrics['degree_combinations_count'] = len(degree_metrics)
+
+            # Compute degree-stratified summary statistics
+            if degree_metrics:
+                degree_correlations = [metrics['correlation'] for metrics in degree_metrics.values()
+                                     if not np.isnan(metrics['correlation'])]
+                degree_maes = [metrics['mae'] for metrics in degree_metrics.values()]
+
+                overall_metrics['degree_correlation_mean'] = np.mean(degree_correlations) if degree_correlations else np.nan
+                overall_metrics['degree_correlation_std'] = np.std(degree_correlations) if degree_correlations else np.nan
+                overall_metrics['degree_mae_mean'] = np.mean(degree_maes) if degree_maes else np.nan
+                overall_metrics['degree_mae_std'] = np.std(degree_maes) if degree_maes else np.nan
+
+        return overall_metrics
 
     def _compute_baseline_metrics(self, empirical_200: Dict[Tuple[int, int], float],
                                     m: int) -> Dict[str, float]:
@@ -828,9 +925,9 @@ class LearnedAnalyticalFormula:
 
     def analyze_residuals(self, empirical_200: Dict[Tuple[int, int], float],
                          m: int, density: float, results_dir: Path,
-                         graph_name: str):
+                         graph_name: str, small_graph_mode: bool = False):
         """
-        Phase 4.10: Analyze residuals (predicted - empirical) and create diagnostic plots.
+        Enhanced residual analysis with degree-based error decomposition.
 
         Parameters
         ----------
@@ -844,9 +941,17 @@ class LearnedAnalyticalFormula:
             Directory to save plots
         graph_name : str
             Graph name for plot titles
+        small_graph_mode : bool
+            Whether to use small graph optimizations
         """
         if self.params is None:
             raise ValueError("Must train model first")
+
+        # Import degree analysis utilities
+        from degree_analysis import DegreeAnalyzer
+
+        # Initialize degree analyzer
+        analyzer = DegreeAnalyzer(small_graph_mode=small_graph_mode)
 
         # Compute predictions and residuals
         residuals_data = []
@@ -861,6 +966,13 @@ class LearnedAnalyticalFormula:
 
             p_analytical = self._current_analytical(u, v, m)
 
+            # Enhanced degree categorization
+            u_category = analyzer.categorize_degrees(np.array([u]))[0]
+            v_category = analyzer.categorize_degrees(np.array([v]))[0]
+            degree_combination = analyzer.create_degree_combination_labels(
+                np.array([u_category]), np.array([v_category])
+            )[0]
+
             residuals_data.append({
                 'u': u,
                 'v': v,
@@ -871,15 +983,19 @@ class LearnedAnalyticalFormula:
                 'residual_learned': p_learned - freq_empirical,
                 'residual_analytical': p_analytical - freq_empirical,
                 'relative_error_learned': (p_learned - freq_empirical) / freq_empirical if freq_empirical > 0 else 0,
-                'degree_category': self._categorize_degrees(u, v)
+                'relative_error_analytical': (p_analytical - freq_empirical) / freq_empirical if freq_empirical > 0 else 0,
+                'degree_category_old': self._categorize_degrees(u, v),  # Keep old for compatibility
+                'source_degree_category': str(u_category),
+                'target_degree_category': str(v_category),
+                'degree_combination': degree_combination
             })
 
         residuals_df = pd.DataFrame(residuals_data)
 
-        # Create residual plots
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        # Create enhanced residual plots with degree-based analysis
+        fig, axes = plt.subplots(3, 2, figsize=(18, 20))
 
-        # Plot 1: Residuals vs u×v product
+        # Plot 1: Residuals vs u×v product (Enhanced)
         ax = axes[0, 0]
         ax.scatter(residuals_df['uv_product'], residuals_df['residual_learned'],
                   alpha=0.5, s=20, label='Learned', color='green')
@@ -891,21 +1007,22 @@ class LearnedAnalyticalFormula:
         ax.set_title(f'{graph_name} - Residuals vs Degree Product', fontsize=14, fontweight='bold')
         ax.legend()
         ax.grid(alpha=0.3)
+        ax.set_xscale('log')
 
-        # Plot 2: Residuals by degree category
+        # Plot 2: Enhanced residuals by degree combination
         ax = axes[0, 1]
-        categories = sorted(residuals_df['degree_category'].unique())
-        learned_by_cat = [residuals_df[residuals_df['degree_category'] == cat]['residual_learned'].values
-                         for cat in categories]
-        analytical_by_cat = [residuals_df[residuals_df['degree_category'] == cat]['residual_analytical'].values
-                            for cat in categories]
+        combinations = sorted(residuals_df['degree_combination'].unique())
+        learned_by_comb = [residuals_df[residuals_df['degree_combination'] == comb]['residual_learned'].values
+                          for comb in combinations]
+        analytical_by_comb = [residuals_df[residuals_df['degree_combination'] == comb]['residual_analytical'].values
+                             for comb in combinations]
 
-        positions = np.arange(len(categories))
+        positions = np.arange(len(combinations))
         width = 0.35
 
-        bp1 = ax.boxplot(learned_by_cat, positions=positions - width/2, widths=width,
+        bp1 = ax.boxplot(learned_by_comb, positions=positions - width/2, widths=width,
                         patch_artist=True, showmeans=True)
-        bp2 = ax.boxplot(analytical_by_cat, positions=positions + width/2, widths=width,
+        bp2 = ax.boxplot(analytical_by_comb, positions=positions + width/2, widths=width,
                         patch_artist=True, showmeans=True)
 
         for patch in bp1['boxes']:
@@ -917,54 +1034,146 @@ class LearnedAnalyticalFormula:
 
         ax.axhline(0, color='black', linestyle='--', linewidth=1)
         ax.set_xticks(positions)
-        ax.set_xticklabels(categories, rotation=45, ha='right')
+        ax.set_xticklabels(combinations, rotation=45, ha='right')
         ax.set_ylabel('Residual', fontsize=12)
-        ax.set_title(f'{graph_name} - Residuals by Degree Category', fontsize=14, fontweight='bold')
+        ax.set_title(f'{graph_name} - Residuals by Degree Combination', fontsize=14, fontweight='bold')
         ax.legend([bp1['boxes'][0], bp2['boxes'][0]], ['Learned', 'Current Analytical'])
         ax.grid(axis='y', alpha=0.3)
 
-        # Plot 3: Q-Q plot for learned residuals
+        # Plot 3: Relative error analysis by degree combination
         ax = axes[1, 0]
+        relative_errors = residuals_df.groupby('degree_combination').agg({
+            'relative_error_learned': ['mean', 'std'],
+            'relative_error_analytical': ['mean', 'std']
+        })
+
+        x_pos = np.arange(len(combinations))
+        ax.bar(x_pos - 0.2, relative_errors[('relative_error_learned', 'mean')],
+               width=0.4, label='Learned', alpha=0.7, color='green')
+        ax.bar(x_pos + 0.2, relative_errors[('relative_error_analytical', 'mean')],
+               width=0.4, label='Analytical', alpha=0.7, color='orange')
+
+        ax.set_xlabel('Degree Combination', fontsize=12)
+        ax.set_ylabel('Mean Relative Error', fontsize=12)
+        ax.set_title(f'{graph_name} - Relative Error by Degree Combination', fontsize=14, fontweight='bold')
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(combinations, rotation=45, ha='right')
+        ax.legend()
+        ax.grid(axis='y', alpha=0.3)
+
+        # Plot 4: Error magnitude heatmap
+        ax = axes[1, 1]
+        error_pivot = residuals_df.pivot_table(
+            values='residual_learned',
+            index='source_degree_category',
+            columns='target_degree_category',
+            aggfunc=lambda x: np.sqrt(np.mean(x**2))  # RMSE
+        )
+
+        import seaborn as sns
+        sns.heatmap(error_pivot, annot=True, fmt='.4f', cmap='Reds', ax=ax,
+                   cbar_kws={'label': 'RMSE'})
+        ax.set_title(f'{graph_name} - RMSE Heatmap by Degree Categories', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Target Degree Category', fontsize=12)
+        ax.set_ylabel('Source Degree Category', fontsize=12)
+
+        # Plot 5: Q-Q plot for learned residuals
+        ax = axes[2, 0]
         from scipy import stats
         stats.probplot(residuals_df['residual_learned'], dist="norm", plot=ax)
         ax.set_title(f'{graph_name} - Q-Q Plot (Learned Formula)', fontsize=14, fontweight='bold')
         ax.grid(alpha=0.3)
 
-        # Plot 4: Histogram of residuals
-        ax = axes[1, 1]
-        ax.hist(residuals_df['residual_learned'], bins=50, alpha=0.7, color='green',
-               label='Learned', edgecolor='black')
-        ax.hist(residuals_df['residual_analytical'], bins=50, alpha=0.7, color='orange',
-               label='Current Analytical', edgecolor='black')
-        ax.axvline(0, color='black', linestyle='--', linewidth=2)
-        ax.set_xlabel('Residual', fontsize=12)
-        ax.set_ylabel('Frequency', fontsize=12)
-        ax.set_title(f'{graph_name} - Residual Distribution', fontsize=14, fontweight='bold')
-        ax.legend()
-        ax.grid(alpha=0.3)
+        # Plot 6: Bias analysis by degree combination
+        ax = axes[2, 1]
+        bias_analysis = residuals_df.groupby('degree_combination').agg({
+            'residual_learned': 'mean',
+            'residual_analytical': 'mean'
+        })
+
+        bias_analysis.plot(kind='bar', ax=ax, color=['green', 'orange'], alpha=0.7)
+        ax.axhline(0, color='black', linestyle='--', linewidth=1)
+        ax.set_xlabel('Degree Combination', fontsize=12)
+        ax.set_ylabel('Mean Residual (Bias)', fontsize=12)
+        ax.set_title(f'{graph_name} - Bias by Degree Combination', fontsize=14, fontweight='bold')
+        ax.legend(['Learned', 'Analytical'])
+        ax.grid(axis='y', alpha=0.3)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
 
         plt.tight_layout()
-        output_path = results_dir / f'residual_analysis_{graph_name}.png'
+        output_path = results_dir / f'enhanced_residual_analysis_{graph_name}.png'
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
 
-        print(f"Residual analysis saved to: {output_path}")
+        print(f"Enhanced residual analysis saved to: {output_path}")
 
-        # Print summary statistics
-        print(f"\n{'='*60}")
-        print(f"RESIDUAL ANALYSIS SUMMARY - {graph_name}")
-        print(f"{'='*60}")
-        print(f"\nLearned Formula:")
-        print(f"  Mean residual: {residuals_df['residual_learned'].mean():.6f}")
-        print(f"  Std residual: {residuals_df['residual_learned'].std():.6f}")
-        print(f"  RMSE: {np.sqrt(np.mean(residuals_df['residual_learned']**2)):.6f}")
+        # Generate detailed degree-based error metrics
+        degree_error_metrics = residuals_df.groupby('degree_combination').agg({
+            'residual_learned': ['count', 'mean', 'std', lambda x: np.sqrt(np.mean(x**2))],
+            'residual_analytical': ['mean', 'std', lambda x: np.sqrt(np.mean(x**2))],
+            'relative_error_learned': ['mean', 'std'],
+            'relative_error_analytical': ['mean', 'std'],
+            'empirical': 'mean',
+            'learned': 'mean',
+            'analytical': 'mean'
+        }).round(6)
 
-        print(f"\nCurrent Analytical:")
-        print(f"  Mean residual: {residuals_df['residual_analytical'].mean():.6f}")
-        print(f"  Std residual: {residuals_df['residual_analytical'].std():.6f}")
-        print(f"  RMSE: {np.sqrt(np.mean(residuals_df['residual_analytical']**2)):.6f}")
+        degree_error_metrics.columns = [
+            'n_samples', 'bias_learned', 'std_learned', 'rmse_learned',
+            'bias_analytical', 'std_analytical', 'rmse_analytical',
+            'rel_error_mean_learned', 'rel_error_std_learned',
+            'rel_error_mean_analytical', 'rel_error_std_analytical',
+            'mean_empirical', 'mean_learned', 'mean_analytical'
+        ]
 
-        return residuals_df
+        # Save detailed metrics
+        metrics_file = results_dir / f'degree_based_error_metrics_{graph_name}.csv'
+        degree_error_metrics.to_csv(metrics_file)
+        print(f"Degree-based error metrics saved to: {metrics_file}")
+
+        # Print enhanced summary statistics
+        print(f"\n{'='*80}")
+        print(f"ENHANCED RESIDUAL ANALYSIS SUMMARY - {graph_name}")
+        print(f"{'='*80}")
+
+        print(f"\nOverall Performance:")
+        print(f"  Learned Formula:")
+        print(f"    Mean residual: {residuals_df['residual_learned'].mean():.6f}")
+        print(f"    Std residual: {residuals_df['residual_learned'].std():.6f}")
+        print(f"    RMSE: {np.sqrt(np.mean(residuals_df['residual_learned']**2)):.6f}")
+
+        print(f"  Current Analytical:")
+        print(f"    Mean residual: {residuals_df['residual_analytical'].mean():.6f}")
+        print(f"    Std residual: {residuals_df['residual_analytical'].std():.6f}")
+        print(f"    RMSE: {np.sqrt(np.mean(residuals_df['residual_analytical']**2)):.6f}")
+
+        print(f"\nDegree-Based Error Analysis:")
+        print(f"  Degree combinations analyzed: {len(degree_error_metrics)}")
+
+        # Identify best and worst performing degree combinations
+        best_combination = degree_error_metrics['rmse_learned'].idxmin()
+        worst_combination = degree_error_metrics['rmse_learned'].idxmax()
+
+        print(f"  Best performing combination: {best_combination}")
+        print(f"    RMSE: {degree_error_metrics.loc[best_combination, 'rmse_learned']:.6f}")
+        print(f"    Samples: {int(degree_error_metrics.loc[best_combination, 'n_samples'])}")
+
+        print(f"  Worst performing combination: {worst_combination}")
+        print(f"    RMSE: {degree_error_metrics.loc[worst_combination, 'rmse_learned']:.6f}")
+        print(f"    Samples: {int(degree_error_metrics.loc[worst_combination, 'n_samples'])}")
+
+        # Identify bias patterns
+        high_bias_combinations = degree_error_metrics[
+            np.abs(degree_error_metrics['bias_learned']) > 0.01
+        ]
+
+        if len(high_bias_combinations) > 0:
+            print(f"\n  High bias combinations (|bias| > 0.01):")
+            for combo in high_bias_combinations.index:
+                bias = high_bias_combinations.loc[combo, 'bias_learned']
+                print(f"    {combo}: {bias:+.6f}")
+
+        return residuals_df, degree_error_metrics
 
     def _categorize_degrees(self, u: int, v: int) -> str:
         """Categorize degree pairs for analysis"""
