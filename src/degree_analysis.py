@@ -16,6 +16,36 @@ from typing import Dict, List, Tuple, Optional, Union
 import warnings
 warnings.filterwarnings('ignore')
 
+# Basic analytical approximation formula
+def compute_basic_analytical_approximation(u: float, v: float, m: int) -> float:
+    """
+    Compute basic analytical approximation for edge probability.
+
+    Formula: P(u,v) = (u*v) / sqrt((u*v)^2 + (m - u - v + 1)^2)
+
+    Parameters
+    ----------
+    u : float
+        Source degree
+    v : float
+        Target degree
+    m : int
+        Total number of edges
+
+    Returns
+    -------
+    prob : float
+        Analytical probability estimate
+    """
+    numerator = u * v
+    denominator_term = m - u - v + 1
+    denominator = np.sqrt((u * v)**2 + denominator_term**2)
+
+    if denominator == 0:
+        return 0.0
+
+    return numerator / denominator
+
 
 class DegreeAnalyzer:
     """
@@ -30,7 +60,8 @@ class DegreeAnalyzer:
 
     def __init__(self,
                  degree_bins: Optional[List[int]] = None,
-                 small_graph_mode: bool = True):
+                 small_graph_mode: bool = True,
+                 data_dir: Optional[Path] = None):
         """
         Initialize DegreeAnalyzer.
 
@@ -40,8 +71,11 @@ class DegreeAnalyzer:
             Custom degree bin edges. If None, uses adaptive binning.
         small_graph_mode : bool
             If True, uses settings optimized for small graphs (<10k edges)
+        data_dir : Path, optional
+            Path to data directory (needed for analytical approximations)
         """
         self.small_graph_mode = small_graph_mode
+        self.data_dir = data_dir
 
         if degree_bins is None:
             if small_graph_mode:
@@ -86,6 +120,65 @@ class DegreeAnalyzer:
         target_degrees = np.array(edge_matrix.sum(axis=0)).flatten()
 
         return source_degrees, target_degrees
+
+    def add_basic_analytical_approximation(self,
+                                         predictions_df: pd.DataFrame,
+                                         edge_type: str,
+                                         source_degrees: np.ndarray,
+                                         target_degrees: np.ndarray) -> pd.DataFrame:
+        """
+        Add basic analytical approximation to the predictions dataframe.
+
+        Formula: P(u,v) = (u*v) / sqrt((u*v)^2 + (m - u - v + 1)^2)
+
+        Parameters
+        ----------
+        predictions_df : pd.DataFrame
+            Model predictions dataframe
+        edge_type : str
+            Edge type identifier
+        source_degrees : np.ndarray
+            Source node degrees
+        target_degrees : np.ndarray
+            Target node degrees
+
+        Returns
+        -------
+        enhanced_df : pd.DataFrame
+            Predictions dataframe with analytical approximation added
+        """
+        enhanced_df = predictions_df.copy()
+
+        # Get total number of edges
+        if self.data_dir is None:
+            print("  Warning: data_dir not set, cannot compute analytical approximation")
+            return enhanced_df
+
+        edge_file = self.data_dir / 'permutations' / '000.hetmat' / 'edges' / f'{edge_type}.sparse.npz'
+        if not edge_file.exists():
+            print(f"  Warning: edge file not found: {edge_file}")
+            return enhanced_df
+
+        edge_matrix = sp.load_npz(str(edge_file))
+        m = edge_matrix.nnz  # Total number of edges
+
+        # Compute analytical approximation for each row
+        analytical_preds = []
+        for _, row in enhanced_df.iterrows():
+            source_idx = int(row['source_index'])
+            target_idx = int(row['target_index'])
+
+            u = source_degrees[source_idx]
+            v = target_degrees[target_idx]
+
+            # Use basic analytical approximation
+            analytical_prob = compute_basic_analytical_approximation(u, v, m)
+            analytical_preds.append(analytical_prob)
+
+        enhanced_df['analytical_approximation'] = analytical_preds
+
+        print(f"  ✓ Added analytical approximation (range: {np.min(analytical_preds):.6f} - {np.max(analytical_preds):.6f})")
+        return enhanced_df
 
     def categorize_degrees(self, degrees: np.ndarray) -> np.ndarray:
         """
@@ -269,6 +362,275 @@ class DegreeAnalyzer:
 
         return pd.DataFrame(metrics)
 
+    def compute_enhanced_degree_error_metrics(self, analysis_df: pd.DataFrame,
+                                             prediction_col: str = 'predicted_prob',
+                                             empirical_col: str = 'empirical_freq',
+                                             analytical_col: str = 'analytical_approximation') -> pd.DataFrame:
+        """
+        Compute comprehensive error metrics by degree combination, including analytical comparisons.
+
+        Parameters
+        ----------
+        analysis_df : pd.DataFrame
+            Analysis dataframe from analyze_predictions_by_degree
+        prediction_col : str
+            Column name for model predictions
+        empirical_col : str
+            Column name for empirical frequencies
+        analytical_col : str
+            Column name for analytical predictions
+
+        Returns
+        -------
+        metrics_df : pd.DataFrame
+            Enhanced error metrics by degree combination
+        """
+        if empirical_col not in analysis_df.columns:
+            print(f"Warning: Empirical column '{empirical_col}' not found, skipping empirical comparisons")
+            # Use basic metrics without empirical comparisons
+            return self.compute_degree_error_metrics(analysis_df, prediction_col, 'predicted_prob')
+
+        # Filter out missing data
+        required_cols = [prediction_col, empirical_col]
+        has_analytical = analytical_col in analysis_df.columns
+        if has_analytical:
+            required_cols.append(analytical_col)
+
+        valid_data = analysis_df.dropna(subset=required_cols)
+
+        if len(valid_data) == 0:
+            return pd.DataFrame()
+
+        # Group by degree combination
+        metrics = []
+
+        for combination in valid_data['degree_combination'].unique():
+            if combination == 'Unknown':
+                continue
+
+            subset = valid_data[valid_data['degree_combination'] == combination]
+
+            if len(subset) < 2:  # Need at least 2 points for meaningful metrics
+                continue
+
+            pred = subset[prediction_col].values
+            emp = subset[empirical_col].values
+
+            # Calculate comprehensive metrics
+            n_samples = len(subset)
+
+            # Model vs Empirical metrics
+            model_absolute_error = np.abs(pred - emp)
+            model_squared_error = (pred - emp) ** 2
+            model_relative_error = np.where(emp > 0, model_absolute_error / emp, np.nan)
+
+            # Model bias and variance
+            model_bias = np.mean(pred - emp)
+            model_variance = np.var(pred - emp)
+
+            # Model performance metrics
+            model_correlation = np.corrcoef(pred, emp)[0, 1] if len(pred) > 1 else np.nan
+
+            # Model robust statistics
+            model_mae = np.mean(model_absolute_error)
+            model_rmse = np.sqrt(np.mean(model_squared_error))
+            model_median_ae = np.median(model_absolute_error)
+
+            metric_dict = {
+                'degree_combination': combination,
+                'n_samples': n_samples,
+                'mean_source_degree': subset['source_degree'].mean(),
+                'mean_target_degree': subset['target_degree'].mean(),
+                'mean_predicted': np.mean(pred),
+                'mean_empirical': np.mean(emp),
+                'bias': model_bias,
+                'variance': model_variance,
+                'mae': model_mae,
+                'rmse': model_rmse,
+                'median_ae': model_median_ae,
+                'q75_ae': np.percentile(model_absolute_error, 75),
+                'q95_ae': np.percentile(model_absolute_error, 95),
+                'correlation': model_correlation,
+                'mean_relative_error': np.nanmean(model_relative_error),
+                'median_relative_error': np.nanmedian(model_relative_error)
+            }
+
+            # Add analytical metrics if available
+            if has_analytical:
+                analytical = subset[analytical_col].values
+
+                # Analytical vs Empirical metrics
+                analytical_absolute_error = np.abs(analytical - emp)
+                analytical_squared_error = (analytical - emp) ** 2
+                analytical_relative_error = np.where(emp > 0, analytical_absolute_error / emp, np.nan)
+
+                analytical_bias = np.mean(analytical - emp)
+                analytical_correlation = np.corrcoef(analytical, emp)[0, 1] if len(analytical) > 1 else np.nan
+                analytical_mae = np.mean(analytical_absolute_error)
+                analytical_rmse = np.sqrt(np.mean(analytical_squared_error))
+
+                # Model vs Analytical comparison
+                model_vs_analytical_mae = np.mean(np.abs(pred - analytical))
+                model_vs_analytical_correlation = np.corrcoef(pred, analytical)[0, 1] if len(pred) > 1 else np.nan
+
+                # Add analytical metrics
+                metric_dict.update({
+                    'mean_analytical': np.mean(analytical),
+                    'analytical_bias': analytical_bias,
+                    'analytical_mae': analytical_mae,
+                    'analytical_rmse': analytical_rmse,
+                    'analytical_correlation': analytical_correlation,
+                    'analytical_mean_relative_error': np.nanmean(analytical_relative_error),
+                    'model_vs_analytical_mae': model_vs_analytical_mae,
+                    'model_vs_analytical_correlation': model_vs_analytical_correlation,
+                    'analytical_improvement': (model_mae - analytical_mae) / model_mae if model_mae > 0 else 0.0
+                })
+
+            metrics.append(metric_dict)
+
+        return pd.DataFrame(metrics)
+
+    def plot_enhanced_error_by_degree(self, metrics_df: pd.DataFrame,
+                                     title_suffix: str = '',
+                                     figsize: Tuple[int, int] = (16, 12)) -> plt.Figure:
+        """
+        Create enhanced visualization comparing model and analytical performance by degree.
+
+        Parameters
+        ----------
+        metrics_df : pd.DataFrame
+            Enhanced error metrics including analytical comparisons
+        title_suffix : str
+            Additional text for plot title
+        figsize : tuple
+            Figure size
+
+        Returns
+        -------
+        fig : matplotlib Figure
+            Generated plot
+        """
+        # Check if analytical metrics are available
+        has_analytical = 'analytical_mae' in metrics_df.columns
+
+        if has_analytical:
+            fig, axes = plt.subplots(2, 3, figsize=figsize)
+            axes = axes.flatten()
+        else:
+            fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+            axes = axes.flatten()
+
+        degree_combinations = metrics_df['degree_combination'].unique()
+        x_pos = np.arange(len(degree_combinations))
+
+        # Plot 1: MAE Comparison
+        ax1 = axes[0]
+        model_mae = [metrics_df[metrics_df['degree_combination'] == dc]['mae'].iloc[0]
+                     for dc in degree_combinations]
+        bars1 = ax1.bar(x_pos - 0.2, model_mae, 0.4, label='Model', color='skyblue', edgecolor='black')
+
+        if has_analytical:
+            analytical_mae = [metrics_df[metrics_df['degree_combination'] == dc]['analytical_mae'].iloc[0]
+                             for dc in degree_combinations]
+            bars2 = ax1.bar(x_pos + 0.2, analytical_mae, 0.4, label='Analytical',
+                           color='lightcoral', edgecolor='black')
+
+        ax1.set_title(f'Mean Absolute Error by Degree Combination{title_suffix}', fontweight='bold')
+        ax1.set_xlabel('Degree Combination')
+        ax1.set_ylabel('MAE')
+        ax1.set_xticks(x_pos)
+        ax1.set_xticklabels(degree_combinations, rotation=45, ha='right')
+        ax1.legend()
+        ax1.grid(axis='y', alpha=0.3)
+
+        # Plot 2: Correlation Comparison
+        ax2 = axes[1]
+        model_corr = [metrics_df[metrics_df['degree_combination'] == dc]['correlation'].iloc[0]
+                      for dc in degree_combinations]
+        bars1 = ax2.bar(x_pos - 0.2, model_corr, 0.4, label='Model', color='skyblue', edgecolor='black')
+
+        if has_analytical:
+            analytical_corr = [metrics_df[metrics_df['degree_combination'] == dc]['analytical_correlation'].iloc[0]
+                              for dc in degree_combinations]
+            bars2 = ax2.bar(x_pos + 0.2, analytical_corr, 0.4, label='Analytical',
+                           color='lightcoral', edgecolor='black')
+
+        ax2.set_title(f'Correlation with Empirical by Degree Combination{title_suffix}', fontweight='bold')
+        ax2.set_xlabel('Degree Combination')
+        ax2.set_ylabel('Correlation')
+        ax2.set_xticks(x_pos)
+        ax2.set_xticklabels(degree_combinations, rotation=45, ha='right')
+        ax2.legend()
+        ax2.grid(axis='y', alpha=0.3)
+
+        # Plot 3: Bias Comparison
+        ax3 = axes[2]
+        model_bias = [metrics_df[metrics_df['degree_combination'] == dc]['bias'].iloc[0]
+                      for dc in degree_combinations]
+        bars1 = ax3.bar(x_pos - 0.2, model_bias, 0.4, label='Model', color='skyblue', edgecolor='black')
+
+        if has_analytical:
+            analytical_bias = [metrics_df[metrics_df['degree_combination'] == dc]['analytical_bias'].iloc[0]
+                              for dc in degree_combinations]
+            bars2 = ax3.bar(x_pos + 0.2, analytical_bias, 0.4, label='Analytical',
+                           color='lightcoral', edgecolor='black')
+
+        ax3.set_title(f'Bias by Degree Combination{title_suffix}', fontweight='bold')
+        ax3.set_xlabel('Degree Combination')
+        ax3.set_ylabel('Bias')
+        ax3.set_xticks(x_pos)
+        ax3.set_xticklabels(degree_combinations, rotation=45, ha='right')
+        ax3.legend()
+        ax3.grid(axis='y', alpha=0.3)
+        ax3.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+
+        # Plot 4: Sample sizes
+        ax4 = axes[3]
+        sample_sizes = [metrics_df[metrics_df['degree_combination'] == dc]['n_samples'].iloc[0]
+                       for dc in degree_combinations]
+        bars = ax4.bar(x_pos, sample_sizes, color='lightgreen', edgecolor='black')
+        ax4.set_title(f'Sample Sizes by Degree Combination{title_suffix}', fontweight='bold')
+        ax4.set_xlabel('Degree Combination')
+        ax4.set_ylabel('Number of Samples')
+        ax4.set_xticks(x_pos)
+        ax4.set_xticklabels(degree_combinations, rotation=45, ha='right')
+        ax4.grid(axis='y', alpha=0.3)
+
+        # Add value labels on sample size bars
+        for bar, size in zip(bars, sample_sizes):
+            ax4.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(sample_sizes)*0.01,
+                    f'{int(size)}', ha='center', va='bottom', fontweight='bold')
+
+        if has_analytical:
+            # Plot 5: Model vs Analytical comparison
+            ax5 = axes[4]
+            model_vs_analytical_mae = [metrics_df[metrics_df['degree_combination'] == dc]['model_vs_analytical_mae'].iloc[0]
+                                      for dc in degree_combinations]
+            bars = ax5.bar(x_pos, model_vs_analytical_mae, color='gold', edgecolor='black')
+            ax5.set_title(f'Model vs Analytical MAE{title_suffix}', fontweight='bold')
+            ax5.set_xlabel('Degree Combination')
+            ax5.set_ylabel('MAE (Model vs Analytical)')
+            ax5.set_xticks(x_pos)
+            ax5.set_xticklabels(degree_combinations, rotation=45, ha='right')
+            ax5.grid(axis='y', alpha=0.3)
+
+            # Plot 6: Analytical improvement
+            ax6 = axes[5]
+            improvement = [metrics_df[metrics_df['degree_combination'] == dc]['analytical_improvement'].iloc[0] * 100
+                          for dc in degree_combinations]
+            colors = ['green' if imp > 0 else 'red' for imp in improvement]
+            bars = ax6.bar(x_pos, improvement, color=colors, edgecolor='black', alpha=0.7)
+            ax6.set_title(f'Analytical Improvement over Model{title_suffix}', fontweight='bold')
+            ax6.set_xlabel('Degree Combination')
+            ax6.set_ylabel('Improvement (%)')
+            ax6.set_xticks(x_pos)
+            ax6.set_xticklabels(degree_combinations, rotation=45, ha='right')
+            ax6.grid(axis='y', alpha=0.3)
+            ax6.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+
+        plt.tight_layout()
+        return fig
+
     def plot_error_by_degree(self, metrics_df: pd.DataFrame,
                            metric: str = 'mae',
                            title_suffix: str = '',
@@ -416,6 +778,17 @@ class DegreeAnalyzer:
 
         # Create visualizations
         if not metrics_df.empty:
+            # Check if we have analytical data for enhanced plots
+            has_analytical = 'analytical_mae' in metrics_df.columns
+
+            if has_analytical:
+                # Create enhanced comparison plot
+                fig_enhanced = self.plot_enhanced_error_by_degree(metrics_df, f' - {edge_type}')
+                enhanced_file = output_dir / f'{edge_type}_enhanced_degree_comparison.png'
+                fig_enhanced.savefig(enhanced_file, dpi=300, bbox_inches='tight')
+                plt.close(fig_enhanced)
+                file_paths['enhanced_plot'] = str(enhanced_file)
+
             # MAE plot
             fig_mae = self.plot_error_by_degree(metrics_df, 'mae', f'- {edge_type}')
             mae_file = output_dir / f'{edge_type}_mae_by_degree.png'
@@ -516,8 +889,8 @@ def run_degree_analysis_pipeline(edge_type: str,
     file_paths : Dict[str, str]
         Generated file paths
     """
-    # Initialize analyzer
-    analyzer = DegreeAnalyzer(small_graph_mode=small_graph_mode)
+    # Initialize analyzer with data directory
+    analyzer = DegreeAnalyzer(small_graph_mode=small_graph_mode, data_dir=data_dir)
 
     # Load graph degrees
     try:
@@ -593,14 +966,24 @@ def run_degree_analysis_pipeline(edge_type: str,
     for model in predictions_df['Model'].unique():
         model_preds = predictions_df[predictions_df['Model'] == model].copy()
 
+        # Add basic analytical approximation
+        print(f"  Adding basic analytical approximation for {model}...")
+        model_preds = analyzer.add_basic_analytical_approximation(
+            model_preds, edge_type, source_degrees, target_degrees
+        )
+
         # Analyze predictions by degree
         analysis_df = analyzer.analyze_predictions_by_degree(
             model_preds, source_degrees, target_degrees, empirical_df
         )
 
-        # Compute error metrics if empirical data available
+        # Compute enhanced error metrics with analytical comparisons if available
         if empirical_df is not None:
-            metrics_df = analyzer.compute_degree_error_metrics(analysis_df)
+            if 'analytical_approximation' in model_preds.columns:
+                print(f"  Computing enhanced metrics with analytical comparisons...")
+                metrics_df = analyzer.compute_enhanced_degree_error_metrics(analysis_df)
+            else:
+                metrics_df = analyzer.compute_degree_error_metrics(analysis_df)
         else:
             metrics_df = pd.DataFrame()
 
