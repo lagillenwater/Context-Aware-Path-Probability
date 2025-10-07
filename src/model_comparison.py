@@ -152,7 +152,7 @@ class ModelCollection:
             rf_desc = 'Random Forest Classifier with 100 trees, max_depth=10'
 
         return {
-            'Simple NN': 'High-performance Neural Network with 3 hidden layers (128, 64, 32 neurons), BatchNorm, Focal Loss, 2 features (source_degree, target_degree)',
+            'Simple NN': 'High-performance Neural Network with 3 hidden layers (128, 64, 32 neurons), BatchNorm, Weighted Cross-Entropy, 2 features (source_degree, target_degree)',
             'Random Forest': rf_desc,
             'Logistic Regression': 'Standard logistic regression with L2 regularization',
             'Polynomial Logistic Regression': 'Polynomial features (degree=2) + Logistic regression'

@@ -76,39 +76,14 @@ class ModelTrainer:
             n_negative = len(y_train) - n_positive
             pos_weight = torch.tensor(n_negative / n_positive)  # Weight for positive class
 
-            # Use Pure Focal Loss for better class imbalance handling
-            class FocalLoss(nn.Module):
-                def __init__(self, alpha=0.25, gamma=2.0):
-                    super(FocalLoss, self).__init__()
-                    self.alpha = alpha
-                    self.gamma = gamma
-
-                def forward(self, inputs, targets):
-                    # BCE loss for base calculation
-                    bce_loss = nn.functional.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
-
-                    # Get probabilities
-                    probs = torch.sigmoid(inputs)
-                    pt = torch.where(targets == 1, probs, 1 - probs)
-
-                    # Apply alpha weighting
-                    alpha_t = torch.where(targets == 1, self.alpha, 1 - self.alpha)
-
-                    # Focal weight focuses on hard examples
-                    focal_weight = alpha_t * (1 - pt) ** self.gamma
-
-                    # Pure focal loss
-                    focal_loss = focal_weight * bce_loss
-
-                    return focal_loss.mean()
-
-            criterion = FocalLoss(alpha=0.25, gamma=2.0)
+            # Use Weighted Cross-Entropy for better class imbalance handling
+            criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
             # Calculate and display class weights for logging
             total_samples = len(y_train)
             positive_weight = total_samples / (2 * n_positive)
             negative_weight = total_samples / (2 * n_negative)
-            print(f"  Using Focal Loss (alpha=0.25, gamma=2.0)")
+            print(f"  Using Weighted Cross-Entropy (BCEWithLogitsLoss)")
             print(f"  pos_weight={pos_weight.item():.3f} for class imbalance")
             print(f"  Class weights: Positive={positive_weight:.3f}, Negative={negative_weight:.3f}")
             print(f"  Positive samples: {int(n_positive)} ({n_positive/len(y_train):.1%})")

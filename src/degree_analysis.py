@@ -221,6 +221,97 @@ class DegreeAnalyzer:
 
         return pred_df
 
+    def analyze_predictions_by_continuous_degree(self,
+                                                predictions_df: pd.DataFrame,
+                                                source_degrees: np.ndarray,
+                                                target_degrees: np.ndarray,
+                                                empirical_df: Optional[pd.DataFrame] = None,
+                                                min_samples: int = 10) -> pd.DataFrame:
+        """
+        Analyze model predictions by exact degree values (continuous analysis).
+
+        Parameters
+        ----------
+        predictions_df : pd.DataFrame
+            Model predictions with columns: source_index, target_index, predicted_prob
+        source_degrees : np.ndarray
+            Source node degrees
+        target_degrees : np.ndarray
+            Target node degrees
+        empirical_df : pd.DataFrame, optional
+            Empirical frequencies for comparison
+        min_samples : int
+            Minimum samples required per degree combination
+
+        Returns
+        -------
+        continuous_df : pd.DataFrame
+            Analysis dataframe with exact degree combinations
+        """
+        pred_df = predictions_df.copy()
+
+        # Map degrees to predictions
+        pred_df['source_degree'] = source_degrees[pred_df['source_index']]
+        pred_df['target_degree'] = target_degrees[pred_df['target_index']]
+
+        # Add empirical frequencies if available
+        if empirical_df is not None:
+            pred_df = pred_df.merge(
+                empirical_df[['source_degree', 'target_degree', 'frequency']],
+                on=['source_degree', 'target_degree'],
+                how='left'
+            )
+            pred_df['empirical_freq'] = pred_df['frequency'].fillna(0)
+
+        # Group by exact degree combinations and compute metrics
+        if 'empirical_freq' in pred_df.columns:
+            groupby_cols = ['source_degree', 'target_degree']
+            agg_dict = {
+                'predicted_prob': ['mean', 'std', 'count'],
+                'empirical_freq': 'mean'
+            }
+        else:
+            groupby_cols = ['source_degree', 'target_degree']
+            agg_dict = {
+                'predicted_prob': ['mean', 'std', 'count']
+            }
+
+        continuous_metrics = pred_df.groupby(groupby_cols).agg(agg_dict).reset_index()
+
+        # Flatten column names
+        continuous_metrics.columns = ['_'.join(col).strip('_') if col[1] else col[0]
+                                    for col in continuous_metrics.columns]
+
+        # Rename columns for clarity
+        column_renames = {
+            'predicted_prob_mean': 'mean_predicted',
+            'predicted_prob_std': 'std_predicted',
+            'predicted_prob_count': 'n_samples'
+        }
+
+        if 'empirical_freq_mean' in continuous_metrics.columns:
+            column_renames['empirical_freq_mean'] = 'mean_empirical'
+
+        continuous_metrics = continuous_metrics.rename(columns=column_renames)
+
+        # Filter by minimum sample size
+        continuous_metrics = continuous_metrics[continuous_metrics['n_samples'] >= min_samples]
+
+        # Calculate additional metrics if empirical data available
+        if 'mean_empirical' in continuous_metrics.columns:
+            continuous_metrics['bias'] = continuous_metrics['mean_predicted'] - continuous_metrics['mean_empirical']
+            continuous_metrics['abs_error'] = np.abs(continuous_metrics['bias'])
+
+            # Calculate relative error (avoid division by zero)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                continuous_metrics['relative_error'] = np.where(
+                    continuous_metrics['mean_empirical'] > 0,
+                    continuous_metrics['abs_error'] / continuous_metrics['mean_empirical'],
+                    np.nan
+                )
+
+        return continuous_metrics
+
     def compute_degree_error_metrics(self, analysis_df: pd.DataFrame,
                                    prediction_col: str = 'predicted_prob',
                                    empirical_col: str = 'empirical_freq') -> pd.DataFrame:
