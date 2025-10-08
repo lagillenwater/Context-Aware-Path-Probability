@@ -9,6 +9,7 @@
 #SBATCH --partition=short
 #SBATCH --output=logs/metapath_array_%A_%a.out
 #SBATCH --error=logs/metapath_array_%A_%a.err
+#SBATCH --qos=normal
 
 # Load modules
 module load python/3.9

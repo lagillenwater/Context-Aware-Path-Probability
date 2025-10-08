@@ -8,6 +8,7 @@
 #SBATCH --partition=short
 #SBATCH --output=logs/comp_null_%j.out
 #SBATCH --error=logs/comp_null_%j.err
+#SBATCH --qos=normal
 
 # Load modules
 module load python/3.9

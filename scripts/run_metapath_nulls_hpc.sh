@@ -8,6 +8,7 @@
 #SBATCH --partition=short
 #SBATCH --output=logs/metapath_nulls_%j.out
 #SBATCH --error=logs/metapath_nulls_%j.err
+#SBATCH --qos=normal
 
 # Load modules
 module load python/3.9

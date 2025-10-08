@@ -8,6 +8,7 @@
 #SBATCH --partition=short
 #SBATCH --output=logs/null_training_%j.out
 #SBATCH --error=logs/null_training_%j.err
+#SBATCH --qos=normal
 
 # Load modules
 module load python/3.9

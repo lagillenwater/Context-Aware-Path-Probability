@@ -8,6 +8,7 @@
 #SBATCH --partition=short
 #SBATCH --output=logs/nb5_fix_%j.out
 #SBATCH --error=logs/nb5_fix_%j.err
+#SBATCH --qos=normal
 
 # Load modules
 module load python/3.9
