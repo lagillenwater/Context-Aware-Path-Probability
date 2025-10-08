@@ -10,12 +10,10 @@
 #SBATCH --error=logs/null_training_%j.err
 #SBATCH --qos=normal
 
-# Load modules
-module load python/3.9
+# Load conda environment
 module load anaconda
-
-# Activate conda environment
-source activate hetionet_env
+conda deactivate
+conda activate CAPP
 
 # Set environment variables
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
