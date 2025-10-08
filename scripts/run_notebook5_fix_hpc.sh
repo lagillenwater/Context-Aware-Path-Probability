@@ -5,17 +5,16 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16GB
 #SBATCH --time=01:00:00
-#SBATCH --partition=short
+#SBATCH --partition=amilan
 #SBATCH --output=logs/nb5_fix_%j.out
 #SBATCH --error=logs/nb5_fix_%j.err
 #SBATCH --qos=normal
 
-# Load modules
-module load python/3.9
+# Load conda environment
 module load anaconda
+conda deactivate
+conda activate CAPP
 
-# Activate conda environment
-source activate hetionet_env
 
 # Create output directories
 mkdir -p logs

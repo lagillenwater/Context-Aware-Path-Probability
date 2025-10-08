@@ -6,17 +6,15 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16GB
 #SBATCH --time=01:00:00
-#SBATCH --partition=short
+#SBATCH --partition=amilan
 #SBATCH --output=logs/metapath_array_%A_%a.out
 #SBATCH --error=logs/metapath_array_%A_%a.err
 #SBATCH --qos=normal
 
-# Load modules
-module load python/3.9
+# Load conda environment
 module load anaconda
-
-# Activate conda environment
-source activate hetionet_env
+conda deactivate
+conda activate CAPP
 
 # Define metapaths (one per array task)
 METAPATHS=(

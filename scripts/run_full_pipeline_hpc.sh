@@ -5,17 +5,16 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64GB
 #SBATCH --time=08:00:00
-#SBATCH --partition=long
+#SBATCH --partition=amilan
 #SBATCH --output=logs/full_pipeline_%j.out
 #SBATCH --error=logs/full_pipeline_%j.err
 #SBATCH --qos=normal
 
-# Load modules
-module load python/3.9
+# Load conda environment
 module load anaconda
+conda deactivate
+conda activate CAPP
 
-# Activate conda environment
-source activate hetionet_env
 
 # Set environment variables
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK

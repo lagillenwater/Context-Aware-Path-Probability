@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64GB
 #SBATCH --time=04:00:00
-#SBATCH --partition=short
+#SBATCH --partition=amilan
 #SBATCH --output=logs/null_training_%j.out
 #SBATCH --error=logs/null_training_%j.err
 #SBATCH --qos=normal

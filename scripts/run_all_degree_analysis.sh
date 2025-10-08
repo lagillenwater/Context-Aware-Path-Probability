@@ -62,7 +62,6 @@ echo "========================================================"
 cat > scripts/summary_analysis.sh << 'EOL'
 #!/bin/bash
 #SBATCH --job-name=degree_summary
-#SBATCH --account=YOUR_ACCOUNT
 #SBATCH --partition=amilan
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -72,10 +71,10 @@ cat > scripts/summary_analysis.sh << 'EOL'
 #SBATCH --output=../logs/summary_analysis_%j.out
 #SBATCH --error=../logs/summary_analysis_%j.err
 
-# Summary analysis across all results
-module purge
-module load python/3.8.5
-source ~/miniconda3/envs/hetionet/bin/activate
+# Load conda environment
+module load anaconda
+conda deactivate
+conda activate CAPP
 
 cd $SLURM_SUBMIT_DIR/..
 

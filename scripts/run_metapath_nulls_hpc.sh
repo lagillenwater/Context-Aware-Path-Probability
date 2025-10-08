@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH --time=03:00:00
-#SBATCH --partition=short
+#SBATCH --partition=amilan
 #SBATCH --output=logs/metapath_nulls_%j.out
 #SBATCH --error=logs/metapath_nulls_%j.err
 #SBATCH --qos=normal
