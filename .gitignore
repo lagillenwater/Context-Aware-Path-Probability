@@ -104,6 +104,8 @@ ENV/
 env.bak/
 venv.bak/
 
+# Archived snapshots (data/results/logs/notebook outputs and legacy docs)
+archive/snapshots/
 # Spyder project settings
 .spyderproject
 .spyproject
