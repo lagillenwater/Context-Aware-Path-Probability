@@ -4,12 +4,26 @@ Reproducible pipelines for null-distribution and path-probability experiments on
 
 ## Environments
 
-- **Poetry (recommended for tasks)**
+You can use either Poetry or the existing conda environment. Pick one and stick with it for a session.
+
+- **Conda (recommended on this repo)**
   ```bash
-  curl -sSL https://install.python-poetry.org | python3 -  # if not installed
-  poetry install
+  # from repo root
+  cd environments
+  conda env create -f environment.yml    # first time only
+  conda activate CAPP
+  cd ..                                   # back to repo root
   ```
-- **Conda (existing)**: `cd environments && conda env create -f environment.yml && conda activate CAPP`
+
+- **Poetry (alternative; useful for poe tasks)**
+  ```bash
+  curl -sSL https://install.python-poetry.org | python3 -   # if poetry not installed
+  poetry install
+  # activate a shell with the venv
+  poetry shell
+  ```
+
+> Tip: If you use conda, the `poe` runner is available via `conda run -n CAPP poe ...` or after `conda activate CAPP` if poethepoet is installed in that env.
 
 ## Data prerequisites
 - Hetionet hetmat and permutations expected under `data/`:
@@ -81,4 +95,3 @@ poetry run poe analyze-composition-failures
 - Empirical edge frequencies generated
 - Null/compositional models trained
 - Figures/phase scripts executed as needed
-
