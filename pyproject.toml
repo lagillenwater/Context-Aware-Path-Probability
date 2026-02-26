@@ -31,7 +31,7 @@ CAPP_PY = "/opt/miniconda3/envs/CAPP/bin/python"
 
 [tool.poe.tasks]
 fetch-hetmat = "${CAPP_PY} scripts/build_hetmat.py"
-generate-permutations = "bash scripts/1_create_permutations.sh"
+generate-permutations = "${CAPP_PY} scripts/generate_permutations.py"
 download-permutations = "bash scripts/2_download_null_graphs.sh"
 compute-edge-frequencies = "bash scripts/3_edge_frequency_analysis.sh"
 train-null-models = "bash scripts/013_null_model_training.sh"
