@@ -39,7 +39,7 @@ poetry run poe <task-name>     # run a task
 ```
 
 ### Core data + null pipeline
-1. `fetch-hetmat` – uses the CAPP env python (default path in pyproject). Restores from snapshot if present; otherwise downloads Hetionet v1.0 JSON and builds hetmat into `data/`. If your env lives elsewhere, set `CAPP_PY` to your python path before running poe tasks.
+1. `fetch-hetmat` – uses the CAPP env python (default path in pyproject). If `data/` already contains a hetmat, it validates metanode/metaedge counts; if not, it downloads Hetionet v1.0 JSON (https://github.com/dhimmel/hetionet/raw/76550e6c93fbe92124edc71725e8c7dd4ca8b1f5/hetnet/json/hetionet-v1.0.json.bz2) and builds hetmat into `data/`. If your env lives elsewhere, set `CAPP_PY` to your python path before running poe tasks.
 2. `generate-permutations` **or** `download-permutations` – create/fetch degree-preserved permutations
 3. `compute-edge-frequencies` – empirical edge frequencies (feeds compositional notebooks)
 4. `train-null-models` – null model training

@@ -1,12 +1,10 @@
-"""Fetch Hetionet hetmat.
+"""Fetch or validate the Hetionet hetmat.
 
-Order:
-1) If data/edges exists, skip.
-2) Otherwise download Hetionet v1.0 JSON and build hetmat into data/.
+Logic:
+1) If ``data/`` already contains a hetmat, validate it.
+2) Otherwise download Hetionet v1.0 JSON and build a fresh hetmat into ``data/``.
 """
-import os
 import pathlib
-import shutil
 import sys
 
 import hetnetpy.readwrite
@@ -17,32 +15,41 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 DATA = REPO / "data"
 
 
-def validate_metagraph(hetmat):
-    metagraph = hetmat.metagraph
-    metanodes = set(str(n) for n in metagraph.get_nodes())
-    metaedges = set(str(e) for e in metagraph.get_edges())
-    if len(metanodes) != 11:
-        print(f"Warning: expected 11 metanodes, found {len(metanodes)}", file=sys.stderr)
-    if len(metaedges) != 24:
-        print(f"Warning: expected 24 metaedges, found {len(metaedges)}", file=sys.stderr)
-
-    required = [DATA / "metagraph.json", DATA / "nodes", DATA / "edges"]
+def validate_hetmat(directory: pathlib.Path) -> None:
+    """Validate that a hetmat on disk looks like Hetionet v1.0."""
+    required = [directory / "metagraph.json", directory / "nodes", directory / "edges"]
     missing = [p for p in required if not p.exists()]
     if missing:
         print(f"ERROR: missing required outputs: {missing}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Metanodes ({len(metanodes)}): {sorted(metanodes)}")
-    print(f"Metaedges ({len(metaedges)}): {sorted(metaedges)}")
+    hetmat = hetmatpy.hetmat.HetMat(directory)
+    metagraph = hetmat.metagraph
+    metanodes = {str(n) for n in metagraph.get_nodes()}
+    metaedges = {str(e) for e in metagraph.get_edges()}
+
+    print("\n=== Hetmat validation ===")
+    print(f"Location : {directory}")
+
+    if len(metanodes) != 11:
+        print(f"Warning: expected 11 metanodes, found {len(metanodes)}", file=sys.stderr)
+    if len(metaedges) != 24:
+        print(f"Warning: expected 24 metaedges, found {len(metaedges)}", file=sys.stderr)
+
+    print(f"Metanodes: {len(metanodes)}/11")
+    print("  " + ", ".join(sorted(metanodes)))
+    print(f"Metaedges: {len(metaedges)}/24")
+    print("  " + ", ".join(sorted(metaedges)))
+    print("Status   : ok\n")
 
 
 def download_and_build():
-    print(f"Downloading Hetionet v1.0 from {URL}")
+    print(f"Downloading Hetionet v1.0 JSON from {URL}")
     graph = hetnetpy.readwrite.read_graph(URL)
 
     print(f"Writing hetmat to {DATA}")
     hetmat = hetmatpy.hetmat.hetmat_from_graph(graph, DATA)
-    validate_metagraph(hetmat)
+    validate_hetmat(DATA)
     print("Hetmat build complete.")
 
 
@@ -50,8 +57,7 @@ def main():
     edges_dir = DATA / "edges"
     if edges_dir.exists() and any(edges_dir.iterdir()):
         print("data/edges exists; validating existing hetmat...")
-        hetmat = hetmatpy.hetmat.HetMat.from_path(DATA)
-        validate_metagraph(hetmat)
+        validate_hetmat(DATA)
         return
 
     DATA.mkdir(parents=True, exist_ok=True)
