@@ -1,0 +1,61 @@
+[tool.poetry]
+name = "context-aware-path-probability"
+version = "0.1.0"
+description = "Reproducible pipelines for null distribution and path probability experiments"
+authors = ["Context Team <dev@context.local>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^2.1.3"
+pandas = "^2.3.2"
+scipy = "^1.15.3"
+matplotlib = "^3.10.5"
+seaborn = "^0.13.2"
+scikit-learn = "^1.7.1"
+torch = "^2.6.0"
+networkx = "^3.4.2"
+tqdm = "^4.67.1"
+papermill = "^2.6.0"
+hetnetpy = "^0.3.1"
+hetmatpy = "^0.1.0"
+
+[tool.poetry.group.dev.dependencies]
+poethepoet = "^0.25.0"
+
+[tool.poe.env]
+PYTHONPATH = "${PYTHONPATH}:${POE_PROJECT_ROOT}"
+
+[tool.poe.tasks]
+fetch-hetmat = "bash scripts/0_create_hetmat.sh"
+generate-permutations = "bash scripts/1_create_permutations.sh"
+download-permutations = "bash scripts/2_download_null_graphs.sh"
+compute-edge-frequencies = "bash scripts/3_edge_frequency_analysis.sh"
+train-null-models = "bash scripts/013_null_model_training.sh"
+compose-null = "bash scripts/014_fast_compositional_null.sh"
+build-metapath-nulls = "bash scripts/015_metapath_null_distributions.sh"
+validate-composition = "bash scripts/17_compositional_validation.sh"
+analyze-composition-failures = "bash scripts/17b_compositional_failure_analysis.sh"
+make-pathcount-heatmaps = "python test_src/create_path_count_heatmap.py"
+assess-length-effects = "python test_src/test_length_degradation.py"
+assess-sparsity = "python test_src/analyze_exp2g_sparsity_effect.py"
+assess-topology = "python test_src/test_topology_specific_outliers.py"
+run-phase1 = "python test_src/phase1_baseline_model.py"
+run-phase2 = "python test_src/run_pair_level_phase2.py"
+run-phase3 = "python test_src/test_phase3_feature_comparison.py"
+run-phase4 = "python test_src/test_phase4_control_experiments.py"
+run-phase5 = "python test_src/test_phase5_linear_regression_cv.py"
+run-phase5b-degree-aware = "python test_src/test_phase5b_degree_aware_correction.py"
+run-phase5b-bias = "python test_src/test_phase5b_bias_diagnostics.py"
+run-phase5b-theoretical = "python test_src/test_phase5b_theoretical_correction.py"
+run-phase5c-regularization = "python test_src/test_phase5c_regularization.py"
+run-gnn-variants = "python test_src/test_gnn_pathway_counts.py"
+test-composition-focused = "python test_src/test_focused_composition_exp2g.py"
+compare-perm0 = "python test_src/test_perm000_vs_perms.py"
+validate-dwpc = "python scripts/23_dwpc_pvalue_validation.py"
+smoke-figures = "python test_src/create_path_count_heatmap.py --max-source-deg 5 --max-target-deg 10"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

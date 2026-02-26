@@ -1,73 +1,84 @@
 # Context-Aware-Path-Probability
 
-This repository is for algorithm development for context aware path search through biomedical knowledge graphs (BKGs). Several of the scripts build on previous work from the Greene Lab and [hetionet project](https://het.io/), including the [connectivity-search-analyses](https://github.com/greenelab/connectivity-search-analyses) repository, [hetio/hetnetpy](https://github.com/hetio/hetnetpy), and [hetio/hetmatpy](https://github.com/hetio/hetmatpy). 
+Reproducible pipelines for null-distribution and path-probability experiments on biomedical knowledge graphs (Hetionet permutations and related metapaths). This README is the single source for running everything end-to-end via Poetry + Poethepoet.
 
-The main goals of this work include:
-* approximating an edge probability prior
-* assessing the multiplicative assumption of edges in a path
+## Environments
 
-## Setup Instructions
+- **Poetry (recommended for tasks)**
+  ```bash
+  curl -sSL https://install.python-poetry.org | python3 -  # if not installed
+  poetry install
+  ```
+- **Conda (existing)**: `cd environments && conda env create -f environment.yml && conda activate CAPP`
 
-### Prerequisites
+## Data prerequisites
+- Hetionet hetmat and permutations expected under `data/`:
+  - Base graph: `data/edges/*.sparse.npz`
+  - Perms: `data/permutations/###.hetmat/edges/*.npz`
+- Empirical edge-frequency CSVs (produced by `compute-edge-frequencies`) land in `results/empirical_edge_frequencies/`.
 
-- [Anaconda](https://www.anaconda.com/products/distribution) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
-- Git
-
-### Clone the Repository
-
+## Task runner
+All pipelines are encoded as Poethepoet tasks. Run from repo root:
 ```bash
-git clone https://github.com/lagillenwater/Context-Aware-Path-Probability.git
-cd Context-Aware-Path-Probability
+poetry run poe --help          # list tasks
+poetry run poe <task-name>     # run a task
 ```
 
-### Create the Environment
+### Core data + null pipeline
+1. `fetch-hetmat` – build/download base hetmat
+2. `generate-permutations` **or** `download-permutations` – create/fetch degree-preserved permutations
+3. `compute-edge-frequencies` – empirical edge frequencies (feeds compositional notebooks)
+4. `train-null-models` – null model training
+5. `compose-null` – compositional null fitting
+6. `build-metapath-nulls` – metapath null distributions
+7. `validate-composition` – compositional validation
+8. `analyze-composition-failures` – failure analysis
 
-1. Navigate to the environments directory:
-   ```bash
-   cd environments
-   ```
+### Figures & diagnostics
+- `make-pathcount-heatmaps` – path-count variance figures
+- `assess-length-effects` – length degradation scripts
+- `assess-sparsity` – sparsity effects
+- `assess-topology` – topology/outlier diagnostics
 
-2. Create the conda environment from the environment file:
-   ```bash
-   conda env create -f environment.yml
-   ```
-   
-   Alternatively, you can use the provided script:
-   ```bash
-   bash create_env.sh
-   ```
+### Phase experiments
+- `run-phase1` – baseline pair-level
+- `run-phase2` – degree-aware corrections
+- `run-phase3` – feature/binning comparisons
+- `run-phase4` – control experiments
+- `run-phase5` – linear CV; variants:
+  - `run-phase5b-degree-aware`
+  - `run-phase5b-bias`
+  - `run-phase5b-theoretical`
+  - `run-phase5c-regularization`
+- `run-gnn-variants` – GNN/multitask tests
+- `test-composition-focused` – focused composition experiments
+- `compare-perm0` – perm000 vs perms comparison
 
-3. Activate the environment:
-   ```bash
-   conda activate CAPP
-   ```
+### Optional validation
+- `validate-dwpc` – DWPC p-value validation suite
+- `smoke-figures` – quick wiring check (small subsets)
 
-## Getting Started
+## Suggested end-to-end run
+```bash
+poetry run poe fetch-hetmat
+poetry run poe generate-permutations   # or download-permutations
+poetry run poe compute-edge-frequencies
+poetry run poe train-null-models
+poetry run poe compose-null
+poetry run poe build-metapath-nulls
+poetry run poe validate-composition
+poetry run poe analyze-composition-failures
+# Figures / phases as needed
+```
 
-### Running the Initial Setup
+## Notes
+- Heavy tasks may require HPC resources; adjust scripts accordingly.
+- Legacy docs have been moved to `archive/docs/` and will be deleted once reproducibility is confirmed.
+- PYTHONPATH is set by poe tasks to include repo root for `src/` imports.
 
-After setting up the environment, run the necessary scripts to carry out the analyses. You can do this in two ways:
+## Checklist (top-level)
+- Data present (hetmat + permutations)
+- Empirical edge frequencies generated
+- Null/compositional models trained
+- Figures/phase scripts executed as needed
 
-#### Option 1: Interactive Jupyter Notebook 
-
-1. Start JupyterLab:
-   ```bash
-   jupyter lab
-   ```
-
-2. Navigate to the `notebooks/` directory and open 
-
-3. Run Notebooks in order:
-    - [`0_create-hetmat.ipynb`](notebooks/0_create-hetmat.ipynb)
-    - ['1_generate-permutations.ipynb'](notebooks/1_generate-permutations.ipynb)  
-
-
-#### Option 2: Shell Script (For batch processing or HPC environments)
-
-1. Navigate to the scripts directory:
-
-2. Run scripts in order:
-   ```bash
-   bash 0_create_hetmat.sh
-   bash 1_create_permutations.sh
-   ```
