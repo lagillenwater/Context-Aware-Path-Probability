@@ -17,15 +17,8 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 DATA = REPO / "data"
 
 
-def download_and_build():
-    print(f"Downloading Hetionet v1.0 from {URL}")
-    graph = hetnetpy.readwrite.read_graph(URL)
-
-    print(f"Writing hetmat to {DATA}")
-    hetmat = hetmatpy.hetmat.hetmat_from_graph(graph, DATA)
+def validate_metagraph(hetmat):
     metagraph = hetmat.metagraph
-
-    # Validate
     metanodes = set(str(n) for n in metagraph.get_nodes())
     metaedges = set(str(e) for e in metagraph.get_edges())
     if len(metanodes) != 11:
@@ -39,15 +32,26 @@ def download_and_build():
         print(f"ERROR: missing required outputs: {missing}", file=sys.stderr)
         sys.exit(1)
 
-    print("Hetmat build complete.")
     print(f"Metanodes ({len(metanodes)}): {sorted(metanodes)}")
     print(f"Metaedges ({len(metaedges)}): {sorted(metaedges)}")
+
+
+def download_and_build():
+    print(f"Downloading Hetionet v1.0 from {URL}")
+    graph = hetnetpy.readwrite.read_graph(URL)
+
+    print(f"Writing hetmat to {DATA}")
+    hetmat = hetmatpy.hetmat.hetmat_from_graph(graph, DATA)
+    validate_metagraph(hetmat)
+    print("Hetmat build complete.")
 
 
 def main():
     edges_dir = DATA / "edges"
     if edges_dir.exists() and any(edges_dir.iterdir()):
-        print("data/edges exists; skipping download")
+        print("data/edges exists; validating existing hetmat...")
+        hetmat = hetmatpy.hetmat.HetMat.from_path(DATA)
+        validate_metagraph(hetmat)
         return
 
     DATA.mkdir(parents=True, exist_ok=True)
