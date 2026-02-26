@@ -26,9 +26,10 @@ poethepoet = "^0.25.0"
 
 [tool.poe.env]
 PYTHONPATH = "${PYTHONPATH}:${POE_PROJECT_ROOT}"
+CAPP_PY = "python"  # override to a full path if needed (e.g., /opt/miniconda3/envs/CAPP/bin/python)
 
 [tool.poe.tasks]
-fetch-hetmat = "python scripts/fetch_hetmat_local.py"
+fetch-hetmat = "${CAPP_PY} scripts/build_hetmat.py"
 generate-permutations = "bash scripts/1_create_permutations.sh"
 download-permutations = "bash scripts/2_download_null_graphs.sh"
 compute-edge-frequencies = "bash scripts/3_edge_frequency_analysis.sh"
