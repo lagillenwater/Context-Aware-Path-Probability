@@ -12,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 from typing import Dict, Any, Tuple, Optional
 import time
 from model_comparison import SimpleNN
+from simple_models import SingleLayerNN
 
 
 class ModelTrainer:
@@ -371,18 +372,20 @@ def predict_with_model(model: Any, X: np.ndarray, model_name: str,
     else:
         X_scaled = X
 
-    if isinstance(model, SimpleNN):
-        # Neural network prediction
+    if isinstance(model, (SimpleNN, SingleLayerNN)):
+        # Neural network prediction - CORRECTED to avoid double sigmoid bias
         model.eval()
         with torch.no_grad():
             X_tensor = torch.FloatTensor(X_scaled)
-            outputs = model(X_tensor)
-            if model.use_class_weights:
-                # Apply sigmoid to logits to get probabilities
-                predictions = torch.sigmoid(outputs).numpy()
+            if isinstance(model, SimpleNN):
+                # Get raw logits by bypassing model's forward() method
+                # This avoids the double sigmoid application that was biasing results
+                raw_logits = model.network(X_tensor).squeeze()
             else:
-                # Already probabilities
-                predictions = outputs.numpy()
+                # SingleLayerNN: use forward method which outputs raw logits
+                raw_logits = model(X_tensor).squeeze()
+            # Apply sigmoid only once, explicitly
+            predictions = torch.sigmoid(raw_logits).numpy()
     else:
         # Scikit-learn prediction
         if hasattr(model, 'predict_proba'):
@@ -395,3 +398,126 @@ def predict_with_model(model: Any, X: np.ndarray, model_name: str,
             predictions = np.clip(predictions, 0, 1)
 
     return predictions
+
+
+def predict_raw_logits(model: Any, X: np.ndarray, model_name: str,
+                      scaler: Optional[StandardScaler] = None) -> np.ndarray:
+    """
+    Get raw logits from models for unbiased comparison.
+
+    This function extracts raw logits before sigmoid compression,
+    enabling fair comparison between neural networks and logistic regression.
+
+    Parameters:
+    -----------
+    model : Any
+        Trained model
+    X : np.ndarray
+        Features to predict
+    model_name : str
+        Name of the model for handling different types
+    scaler : Optional[StandardScaler]
+        Scaler to apply to features
+
+    Returns:
+    --------
+    np.ndarray
+        Raw logits (pre-sigmoid)
+    """
+    # Scale features if scaler is provided
+    if scaler is not None:
+        X_scaled = scaler.transform(X)
+    else:
+        X_scaled = X
+
+    if isinstance(model, SimpleNN):
+        # Neural network raw logits
+        model.eval()
+        with torch.no_grad():
+            X_tensor = torch.FloatTensor(X_scaled)
+            # Get raw logits directly from network (no sigmoid)
+            raw_logits = model.network(X_tensor).squeeze()
+            logits = raw_logits.numpy()
+    else:
+        # Scikit-learn models
+        if hasattr(model, 'decision_function'):
+            # Logistic regression and SVM have decision_function for raw scores
+            logits = model.decision_function(X_scaled)
+        elif hasattr(model, 'predict_proba'):
+            # Convert probabilities back to logits using inverse sigmoid
+            probs = model.predict_proba(X_scaled)[:, 1]
+            # Clip probabilities to avoid log(0) and log(1)
+            probs_clipped = np.clip(probs, 1e-7, 1 - 1e-7)
+            logits = np.log(probs_clipped / (1 - probs_clipped))
+        else:
+            # For regression models, treat predictions as logits
+            logits = model.predict(X_scaled)
+
+    return logits
+
+
+def compare_raw_logits(models_dict: Dict[str, Any], X_test: np.ndarray,
+                      y_test: np.ndarray, scalers_dict: Dict[str, Any] = None) -> Dict[str, Dict]:
+    """
+    Compare models using raw logits before sigmoid compression.
+
+    This reveals the true learning capability without calibration bias.
+
+    Parameters:
+    -----------
+    models_dict : Dict[str, Any]
+        Dictionary of trained models
+    X_test : np.ndarray
+        Test features
+    y_test : np.ndarray
+        Test labels (binary)
+    scalers_dict : Dict[str, Any]
+        Dictionary of scalers for each model
+
+    Returns:
+    --------
+    Dict[str, Dict]
+        Raw logit analysis results for each model
+    """
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+
+    results = {}
+
+    for model_name, model in models_dict.items():
+        try:
+            # Get scaler if available
+            scaler = scalers_dict.get(model_name) if scalers_dict else None
+
+            # Get raw logits
+            raw_logits = predict_raw_logits(model, X_test, model_name, scaler)
+
+            # Calculate metrics on raw logits
+            raw_correlation = np.corrcoef(y_test, raw_logits)[0, 1]
+
+            # AUC can be calculated from raw logits (it's invariant to monotonic transforms)
+            raw_auc = roc_auc_score(y_test, raw_logits)
+
+            # Statistics
+            logit_mean = np.mean(raw_logits)
+            logit_std = np.std(raw_logits)
+            logit_range = np.max(raw_logits) - np.min(raw_logits)
+
+            results[model_name] = {
+                'raw_correlation': raw_correlation,
+                'raw_auc': raw_auc,
+                'logit_mean': logit_mean,
+                'logit_std': logit_std,
+                'logit_range': logit_range,
+                'raw_logits': raw_logits  # Store for further analysis
+            }
+
+        except Exception as e:
+            print(f"Error processing {model_name}: {e}")
+            results[model_name] = {
+                'raw_correlation': np.nan,
+                'raw_auc': np.nan,
+                'error': str(e)
+            }
+
+    return results

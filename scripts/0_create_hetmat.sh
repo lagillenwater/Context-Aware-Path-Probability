@@ -2,8 +2,8 @@
 
 #SBATCH --job-name=create_hetmat
 #SBATCH --account=amc-general
-#SBATCH --output=../logs/output_create_hetmat.log
-#SBATCH --error=../logs/error_create_hetmat.log
+#SBATCH --output=../logs/data_prep/hetmat/output_create_hetmat.log
+#SBATCH --error=../logs/data_prep/hetmat/error_create_hetmat.log
 #SBATCH --time=01:00:00
 #SBATCH --partition=amilan
 #SBATCH --qos=normal

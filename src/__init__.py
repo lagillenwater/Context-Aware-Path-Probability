@@ -7,18 +7,32 @@ using recurrent neural networks and other machine learning approaches.
 Modules:
 --------
 models : Neural network architectures
-data_processing : Data preparation and processing utilities  
+data_processing : Data preparation and processing utilities
 training : Training loops and model management
 visualization : Plotting and analysis visualization tools
 download_utils : File download and organization utilities
+benchmarking : Fair model comparison utilities
 """
 
-from .models import EdgePredictionNN
-from .data_processing import prepare_edge_prediction_data
-from .training import train_edge_prediction_model, train_across_permutations
+# Legacy imports (kept for backwards compatibility)
+try:
+    from .models import EdgePredictionNN
+except ImportError:
+    pass
+
+try:
+    from .data_processing import prepare_edge_prediction_data
+except ImportError:
+    pass
+
+try:
+    from .training import train_edge_prediction_model, train_across_permutations
+except ImportError:
+    pass
+
 from .visualization import (
-    plot_training_history, 
-    evaluate_model_performance, 
+    plot_training_history,
+    evaluate_model_performance,
     create_probability_heatmap,
     plot_permutation_comparison
 )
@@ -29,29 +43,56 @@ from .download_utils import (
     download_hetionet_permutations
 )
 
+# Import benchmarking utilities
+try:
+    from .benchmarking import (
+        BenchmarkResult,
+        Timer,
+        MemoryTracker,
+        ModelBenchmarker,
+        compute_normalized_cost,
+        load_all_benchmarks,
+        compute_efficiency
+    )
+    _has_benchmarking = True
+except ImportError:
+    _has_benchmarking = False
+
 __version__ = "0.1.0"
 __author__ = "DWPC RNN Team"
 
 __all__ = [
     # Models
     "EdgePredictionNN",
-    
+
     # Data Processing
     "prepare_edge_prediction_data",
-    
+
     # Training
     "train_edge_prediction_model",
     "train_across_permutations",
-    
+
     # Visualization
     "plot_training_history",
-    "evaluate_model_performance", 
+    "evaluate_model_performance",
     "create_probability_heatmap",
     "plot_permutation_comparison",
-    
+
     # Download utilities
     "download_file",
     "extract_zip",
     "organize_permutations",
     "download_hetionet_permutations",
 ]
+
+# Add benchmarking to __all__ if available
+if _has_benchmarking:
+    __all__.extend([
+        "BenchmarkResult",
+        "Timer",
+        "MemoryTracker",
+        "ModelBenchmarker",
+        "compute_normalized_cost",
+        "load_all_benchmarks",
+        "compute_efficiency",
+    ])

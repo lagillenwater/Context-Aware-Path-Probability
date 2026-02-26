@@ -15,8 +15,8 @@ from sklearn.metrics import roc_auc_score, average_precision_score
 from tqdm import tqdm
 import numpy as np
 
-from models import EdgePredictionNN
-from data_processing import prepare_edge_prediction_data
+from .models import EdgePredictionNN
+from .data_processing import prepare_edge_prediction_data
 
 
 def train_edge_prediction_model(features, labels, test_size=0.2, epochs=100, batch_size=1024, learning_rate=0.001, patience=10):

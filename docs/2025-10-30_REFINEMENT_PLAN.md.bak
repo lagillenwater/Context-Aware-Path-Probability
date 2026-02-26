@@ -1,0 +1,1134 @@
+# Null Distribution Prediction Refinement Plan
+
+**Date**: 2025-10-30
+**Goal**: Refine permutation null prediction from r=0.88 to r≥0.90, validate approach, scale to longer paths
+**Context**: See `2025-10-30_RESOLUTION_AND_ARCHITECTURE_FINDINGS.md` for background
+
+---
+
+## Overview
+
+This plan outlines a systematic approach to refining the null distribution prediction model (Pipeline 18). The current baseline achieves r=0.88 for predicting degree-binned pathway counts. Our goal is to improve accuracy, validate generalization, and scale to longer metapaths (3-5 hops).
+
+**Timeline**: 3-4 weeks
+**Risk Level**: Medium (some phases may not achieve target improvements)
+**Dependencies**: HPC access for permutation data, executed notebooks
+
+---
+
+## Phase 1: Establish and Validate Baseline
+
+**Duration**: 2-3 days
+**Priority**: **CRITICAL** - Must complete before any optimization
+
+### Objectives
+1. Run Pipeline 18 (notebooks 18a-18f) for CbGpPW metapath
+2. Reproduce reported r=0.88 validation performance
+3. Document exactly what model predicts and how it's evaluated
+4. Verify model files, benchmarks, and validation metrics
+
+### Detailed Steps
+
+#### 1.1 Execute Pipeline 18
+```bash
+# Run full pipeline for CbGpPW
+bash scripts/18a_data_preparation.sh CbGpPW
+bash scripts/18b_train_random.sh CbGpPW
+bash scripts/18c_train_degree_product.sh CbGpPW
+bash scripts/18d_train_negbin_glm.sh CbGpPW
+bash scripts/18e_train_random_forest.sh CbGpPW
+bash scripts/18f_train_degree_signature_nn.sh CbGpPW  # KEY MODEL
+bash scripts/18g_variance_estimation.sh CbGpPW
+bash scripts/18h_anomaly_detection.sh CbGpPW
+```
+
+#### 1.2 Verify Outputs
+- Check: `results/pathway_nn/trained_models/CbGpPW_Degree_Sig_NN.pt` exists
+- Check: `results/pathway_nn/benchmarks/CbGpPW_Degree_Sig_NN_benchmark.json` exists
+- Validate: `validation_r` field in benchmark JSON
+- Confirm: r ≈ 0.88 ± 0.05
+
+#### 1.3 Document Baseline
+Create: `docs/PIPELINE18_BASELINE_VALIDATION.md` with:
+- Exact performance metrics
+- Training data characteristics
+- Model architecture confirmation
+- Validation methodology
+- Comparison to 4 baseline models
+
+### Success Criteria
+- ✅ All Pipeline 18 scripts execute successfully
+- ✅ Trained model file exists and loads
+- ✅ Benchmark JSON reports validation_r ≈ 0.88
+- ✅ Documentation complete and accurate
+
+### Pros
+- **Establishes ground truth**: Know current performance empirically
+- **Identifies issues early**: Catch problems before optimization
+- **Validates assumptions**: Confirms Pipeline 18 methodology works
+- **Low risk**: Just running existing code
+
+### Cons
+- **May reveal lower performance**: r=0.88 might be overestimate
+- **Time investment**: 2-3 days without improvement
+- **Requires HPC**: Permutation data and compute resources
+- **Debugging potential**: Boolean matrix bugs, missing files
+
+### Possible Failure Points
+
+#### Failure 1: r < 0.80 (worse than expected)
+**Symptoms**: Validation r significantly lower than 0.88
+**Causes**:
+- Boolean matrix bug (counts vs reachability)
+- Incorrect train/val split
+- Data leakage or contamination
+- Model architecture error
+
+**Mitigation**:
+- Check dtype conversions (bool→int32 before matmul)
+- Verify validation set is truly held-out
+- Inspect training curves for overfitting
+- Re-implement model from scratch if needed
+
+**Decision**: If r<0.75, STOP and debug before proceeding
+
+#### Failure 2: Missing permutation data
+**Symptoms**: FileNotFoundError for permutation directories
+**Causes**:
+- Permutations 1-30 not downloaded
+- Incorrect file paths
+- Corrupted .hetmat directories
+
+**Mitigation**:
+- Run `scripts/2_download_null_graphs.sh`
+- Check `data/permutations/` directory structure
+- Validate with `ls data/permutations/001.hetmat/edges/`
+
+#### Failure 3: Memory overflow
+**Symptoms**: OOM errors during training
+**Causes**:
+- Loading full pathway matrices instead of features
+- Inefficient sparse matrix operations
+
+**Mitigation**:
+- Use stratified sampling (200 samples per bin)
+- Process permutations incrementally
+- Reduce batch size or hidden layer dimensions
+
+### Arguments For
+1. **Cannot improve what we haven't measured** - Baseline critical
+2. **Published results need reproduction** - Scientific rigor
+3. **Catch bugs early** - Cheaper to fix before optimization
+4. **Low cost, high value** - 2-3 days for certainty
+
+### Arguments Against
+1. **Delays improvement work** - Could jump to optimization
+2. **Baseline "obvious"** - Just run the notebooks
+3. **Resource intensive** - Requires HPC, takes days
+4. **May demoralize** - Finding bugs discouraging
+
+**Verdict**: **STRONGLY IN FAVOR** - Cannot proceed rationally without baseline
+
+---
+
+## Phase 2: Binning Resolution Study
+
+**Duration**: 3-4 days
+**Priority**: Medium - Optimization attempt
+
+### Objectives
+1. Test alternative bin sizes: 5×5, 10×10, 15×15, 20×20, 30×30
+2. Evaluate on CbGpPW metapath
+3. Measure trade-off: accuracy vs sample size vs computation
+4. Identify optimal resolution for null prediction
+
+### Detailed Steps
+
+#### 2.1 Create Test Framework
+```python
+# test_bin_resolutions.py
+bin_sizes = [5, 10, 15, 20, 30]
+for n_bins in bin_sizes:
+    # Prepare data with n_bins
+    data = prepare_training_data(metapath='CbGpPW', n_bins=n_bins)
+
+    # Train model
+    model = train_model(data)
+
+    # Validate
+    metrics = evaluate_model(model, validation_perms=[21-30])
+
+    # Record: validation_r, n_samples, training_time
+```
+
+#### 2.2 Analyze Trade-offs
+- Plot: validation_r vs n_bins
+- Plot: training_time vs n_bins
+- Plot: samples_per_bin vs n_bins
+- Identify: optimal n_bins (max r without overfitting)
+
+#### 2.3 Test on Second Metapath
+- Repeat for GiGiG (contrasting characteristics)
+- Check: Is optimal n_bins consistent across metapaths?
+
+### Success Criteria
+- ✅ Test 5 bin sizes (5, 10, 15, 20, 30)
+- ✅ Identify optimal n_bins with evidence
+- ✅ Improvement: validation_r increases by ≥0.02
+- ✅ Consistent across 2 metapaths
+
+### Pros
+- **Low-hanging fruit**: Simple parameter to tune
+- **Systematic**: Tests range of resolutions
+- **Data-driven**: Empirical optimization
+- **Quick to implement**: Modify existing code
+
+### Cons
+- **Diminishing returns likely**: Oracle analysis shows limited headroom
+- **Data sparsity risk**: Finer bins = fewer samples = overfitting
+- **May not help**: Optimal might be current 10×10
+- **Compute intensive**: 5 training runs per metapath
+
+### Possible Failure Points
+
+#### Failure 1: Finer bins overfit
+**Symptoms**: Training r high, validation r drops
+**Causes**:
+- <10 samples per bin
+- Model memorizes small training set
+- Insufficient regularization
+
+**Mitigation**:
+- Increase dropout (0.1 → 0.2)
+- Add L2 regularization (weight_decay=1e-4)
+- Use ensemble of models trained on bootstrapped data
+
+#### Failure 2: No improvement across range
+**Symptoms**: Validation r flat across 5-30 bins
+**Causes**:
+- Current 10×10 already optimal
+- Variance fundamentally limits performance
+- Need different features, not more bins
+
+**Decision**: If max improvement <0.01, SKIP this direction
+
+#### Failure 3: Inconsistent across metapaths
+**Symptoms**: Optimal n_bins differs wildly (CbGpPW→5, GiGiG→30)
+**Causes**:
+- Metapath-specific characteristics dominate
+- No universal optimal bin size
+- Need adaptive binning strategy
+
+**Mitigation**:
+- Develop metapath-specific bin size selection
+- Use degree distribution properties to predict optimal n_bins
+
+### Arguments For
+1. **Simple to test** - Just change one parameter
+2. **Might work** - Finer resolution could help
+3. **Establishes bounds** - Know limits of binning
+4. **Publication value** - Shows optimization process
+
+### Arguments Against
+1. **Unlikely to reach r≥0.95** - Oracle showed r_max≈0.53 for pairs
+2. **Wrong direction** - Should focus on features, not bins
+3. **Overfitting risk** - More bins = data sparsity
+4. **Wasted effort** - If doesn't generalize to metapaths
+
+**Verdict**: **CAUTIOUSLY IN FAVOR** - Quick to test, low cost, but set expectations low
+
+---
+
+## Phase 3: Feature Ablation Study
+
+**Duration**: 3-4 days
+**Priority**: **HIGH** - Most promising optimization
+
+### Objectives
+1. Test feature Sets B-F against baseline Set A
+2. Identify which enhanced features improve null prediction
+3. Select optimal feature set for production use
+4. Validate on CbGpPW and GiGiG
+
+### Feature Sets (Already Prepared)
+
+| Set | Features | Description |
+|-----|----------|-------------|
+| **A (Baseline)** | 102 | 2 degree bins + 100 intermediate signatures |
+| **B** | 104 | + log(degree) transforms |
+| **C** | 109 | + summary stats (mean, std, min, max, median) |
+| **D** | 111 | + neighbor context |
+| **E** | 113 | + polynomial terms (degree², degree³) |
+| **F** | 116 | + interaction terms (source×target features) |
+
+### Detailed Steps
+
+#### 3.1 Regenerate Training Data from Permutations
+**CRITICAL FIX**: Current data from original graph, need permutations
+
+```python
+# Fix: prepare_training_data_permutations.py
+for perm_id in range(1, 21):  # Training permutations
+    edge1 = load_edge_matrix(edge1_type, perm_id)
+    edge2 = load_edge_matrix(edge2_type, perm_id)
+
+    # Compute bin statistics for this permutation
+    perm_data = compute_bin_features(edge1, edge2, feature_set='A')
+
+    # Aggregate across permutations
+    all_perm_data.append(perm_data)
+
+# Average across training permutations
+training_data = average_across_permutations(all_perm_data)
+```
+
+#### 3.2 Train Models for Each Feature Set
+```python
+for feature_set in ['A', 'B', 'C', 'D', 'E', 'F']:
+    # Load features
+    X = load_features(metapath='CbGpPW', feature_set=feature_set)
+
+    # Train with consistent hyperparameters
+    model = DegreeSignatureNN(input_dim=X.shape[1])
+    train_model(model, X_train, y_train, X_val, y_val)
+
+    # Validate on permutations 21-30
+    val_r = evaluate_on_permutations(model, valid_perms=[21-30])
+
+    # Record results
+    results[feature_set] = {'validation_r': val_r, 'n_features': X.shape[1]}
+```
+
+#### 3.3 Analyze Results
+- Rank feature sets by validation_r
+- Test statistical significance (paired t-test across permutations)
+- Identify: Which features contribute most?
+- Check: Overfitting (train r vs validation r gap)
+
+#### 3.4 Feature Importance Analysis
+```python
+# For best feature set
+best_model = load_model(f'CbGpPW_{best_feature_set}')
+
+# Compute feature importance via permutation
+importances = permutation_importance(best_model, X_val, y_val)
+
+# Identify top 20 features
+top_features = importances.argsort()[-20:]
+```
+
+### Success Criteria
+- ✅ Test all 6 feature sets (A-F)
+- ✅ Improvement: Best set achieves validation_r ≥ 0.90
+- ✅ Consistent across CbGpPW and GiGiG
+- ✅ Statistical significance (p<0.05)
+
+### Pros
+- **Data already prepared**: Sets A-F extracted (need regeneration)
+- **High potential**: Enhanced features may capture topology better
+- **Systematic**: Tests hypotheses about feature value
+- **Interpretable**: Can identify which features help
+
+### Cons
+- **Overfitting risk**: 116 features on ~100 samples
+- **Need to regenerate data**: Fix permutation source (1-2 days)
+- **May not help**: Baseline 102 features might be sufficient
+- **Collinearity**: Some features highly correlated
+
+### Possible Failure Points
+
+#### Failure 1: All sets perform similarly (r≈0.88)
+**Symptoms**: Sets B-F show no improvement over Set A
+**Causes**:
+- Baseline features already capture all signal
+- Added features redundant or noisy
+- Limited variance in null distributions
+
+**Decision**: If improvement <0.01, conclude baseline optimal
+**Action**: Focus on other phases (binning, metapath validation)
+
+#### Failure 2: Overfitting with complex feature sets
+**Symptoms**: Set F has train_r=0.95, val_r=0.75
+**Causes**:
+- Too many features for small dataset
+- Model memorizes training bins
+- Insufficient regularization
+
+**Mitigation**:
+- Use feature selection (Lasso, forward selection)
+- Increase dropout, L2 regularization
+- Reduce to top 50 features by importance
+
+#### Failure 3: Zero-variance features
+**Symptoms**: 50+ features have std≈0
+**Causes**:
+- Sparse intermediate signatures (many bins empty)
+- Summary stats constant for small node sets
+
+**Mitigation**:
+- Filter features with std>1e-6
+- Use only non-zero histogram bins
+- Replace empty bins with small pseudocount
+
+### Arguments For
+1. **Highest potential for improvement** - New information
+2. **Already implemented** - Just need to train
+3. **Interpretable results** - Know which features help
+4. **Scientifically interesting** - Which topology matters?
+
+### Arguments Against
+1. **Overfitting risk high** - 116 features, 100 samples
+2. **Regeneration work** - Fix permutation source
+3. **Diminishing returns** - Baseline already strong
+4. **Complexity cost** - 116 features = slower inference
+
+**Verdict**: **STRONGLY IN FAVOR** - Best shot at reaching r≥0.90
+
+---
+
+## Phase 4: Multi-Metapath Validation
+
+**Duration**: 4-5 days
+**Priority**: **HIGH** - Required for publication
+
+### Objectives
+1. Validate approach on 5-10 diverse 2-hop metapaths
+2. Document which metapaths achieve r≥0.90
+3. Identify metapath characteristics that predict success
+4. Ensure generalization beyond CbGpPW
+
+### Metapath Selection Strategy
+
+**Diversity axes**:
+1. **Density**: Sparse (CbGpPW, 0.01%) vs Dense (GiGiG, 2.1%)
+2. **Symmetry**: Asymmetric (CbGpPW) vs Symmetric (CrCr→C, GiGiG)
+3. **Degree distribution**: Narrow vs Wide range
+4. **Biological context**: Drugs, Genes, Diseases, Pathways
+
+**Candidate metapaths** (from Pipeline 18 list):
+1. **CbGpPW** - Baseline (sparse, asymmetric, narrow degree)
+2. **GiGiG** - Dense, symmetric, wide degree
+3. **CtDaG** - Moderate density, asymmetric
+4. **CbGaD** - Moderate, asymmetric
+5. **CrCbG** - Sparse, asymmetric, compound-compound
+6. **CbGiG** - Moderate, wide intermediate degree
+7. **CpDaG** - Sparse, disease-focused
+8. **CbGpBP** - Biological process (more specific than PW)
+
+**Test 8 metapaths** for comprehensive validation
+
+### Detailed Steps
+
+#### 4.1 Run Best Configuration on All Metapaths
+```bash
+# Use optimal bin size and feature set from Phases 2-3
+for METAPATH in CbGpPW GiGiG CtDaG CbGaD CrCbG CbGiG CpDaG CbGpBP; do
+    bash scripts/18_submit_all.sh $METAPATH \
+        --bins ${OPTIMAL_N_BINS} \
+        --features ${BEST_FEATURE_SET}
+done
+```
+
+#### 4.2 Collect Performance Metrics
+```python
+# analyze_metapath_performance.py
+results = []
+for metapath in all_metapaths:
+    benchmark = load_benchmark(f'{metapath}_Degree_Sig_NN_benchmark.json')
+
+    metapath_chars = characterize_metapath(metapath)  # density, degree_range, etc.
+
+    results.append({
+        'metapath': metapath,
+        'validation_r': benchmark['validation_r'],
+        **metapath_chars
+    })
+
+df = pd.DataFrame(results)
+```
+
+#### 4.3 Identify Success Patterns
+```python
+# Correlation analysis
+correlate(df['validation_r'], df['density'])
+correlate(df['validation_r'], df['degree_range'])
+correlate(df['validation_r'], df['pathway_variance'])
+
+# Regression: predict validation_r from metapath properties
+from sklearn.linear_model import LinearRegression
+X = df[['density', 'degree_range', 'symmetry', 'mean_pathway_count']]
+y = df['validation_r']
+model = LinearRegression().fit(X, y)
+
+# Identify: Which metapaths work well (r≥0.90)? Why?
+```
+
+#### 4.4 Document Failure Modes
+For metapaths with r<0.85:
+- Analyze residuals
+- Check degree distribution characteristics
+- Test if additional features help
+- Document why approach fails
+
+### Success Criteria
+- ✅ Test 8 diverse metapaths
+- ✅ At least 6/8 achieve r≥0.85
+- ✅ At least 4/8 achieve r≥0.90
+- ✅ Identify predictive metapath characteristics
+
+### Pros
+- **Proves generalization**: Not overfitted to CbGpPW
+- **Publication requirement**: Multiple metapaths needed
+- **Identifies limits**: Know where approach fails
+- **Scientific value**: Metapath property analysis interesting
+
+### Cons
+- **Time intensive**: 8 metapaths × full pipeline
+- **Resource heavy**: Requires significant HPC time
+- **May reveal failures**: Some metapaths might not work
+- **Delayed gratification**: Results come after all training
+
+### Possible Failure Points
+
+#### Failure 1: High failure rate (5/8 metapaths r<0.85)
+**Symptoms**: Only sparse, drug-focused metapaths work
+**Causes**:
+- Approach specific to certain metapath types
+- Gene-gene interactions too complex
+- Degree signatures insufficient for dense networks
+
+**Mitigation**:
+- Develop metapath-specific architectures
+- Add edge-type-specific features
+- Consider hybrid approaches
+
+**Decision**: If <50% succeed, approach not general enough for publication
+
+#### Failure 2: Inconsistent optimal settings
+**Symptoms**: Best bins/features differ per metapath
+**Causes**:
+- No universal optimal configuration
+- Metapath heterogeneity too large
+
+**Mitigation**:
+- Develop metapath property → hyperparameter mapping
+- Use meta-learning to predict optimal config
+
+#### Failure 3: Computational infeasibility
+**Symptoms**: Jobs exceed time/memory limits
+**Causes**:
+- GiGiG has 91K degree combinations (vs 10K for CbGpPW)
+- Memory explosion for dense metapaths
+
+**Mitigation**:
+- Use stratified sampling (limit samples per bin)
+- Coarser bins for high-combination metapaths
+- Parallel processing on multiple nodes
+
+### Arguments For
+1. **Publication requirement** - Need multiple metapaths
+2. **Scientific rigor** - Must show generalization
+3. **Informs Phase 5** - Know if approach scales before 3-hop
+4. **Identifies boundary conditions** - When does it work?
+
+### Arguments Against
+1. **Resource intensive** - Weeks of HPC time
+2. **Could fail** - May reveal approach doesn't generalize
+3. **Delays longer paths** - Can't start Phase 5 until complete
+4. **Diminishing returns** - After 3-4 metapaths, patterns clear
+
+**Verdict**: **IN FAVOR** - Essential but can reduce to 5-6 metapaths
+
+---
+
+## Phase 5: Extend to Longer Paths (3-5 Hops)
+
+**Duration**: 5-7 days
+**Priority**: **HIGH** - Core objective
+
+### Objectives
+1. Test approach on 3-hop, 4-hop, and 5-hop metapaths
+2. Assess computational feasibility and accuracy
+3. Identify if feature engineering scales naturally
+4. Redesign if current approach doesn't extend
+
+### Challenge: Feature Explosion
+
+**Problem**: For k-hop paths, features explode
+- 2-hop: 2 degree bins + (10×10) intermediate signature = 102 features
+- 3-hop: 2 degree bins + (10×10) intermediate1 + (10×10) intermediate2 = 202 features
+- 4-hop: 302 features
+- 5-hop: 402 features
+
+**Risk**: Overfitting with 402 features on ~100 samples
+
+### Detailed Steps
+
+#### 5.1 Test 3-Hop Metapaths
+**Candidates**:
+- **CbGiGpPW**: Compound→Gene→Gene→Pathway
+- **CtDaGiG**: Compound→Disease→Gene→Gene
+- **CbGpPWpD**: Compound→Gene→Pathway→Disease
+
+**Method**:
+```python
+# 3-hop feature extraction
+features_3hop = {
+    'source_bin': source_bin,
+    'target_bin': target_bin,
+    'inter1_sig': histogram_10x10(intermediate1_degrees),  # 100 dims
+    'inter2_sig': histogram_10x10(intermediate2_degrees),  # 100 dims
+}
+# Total: 202 features
+```
+
+**Evaluate**:
+- Train DegreeSignatureNN with 202 input features
+- Check: Does validation_r remain ≥0.85?
+- Measure: Training time, memory usage
+
+#### 5.2 Test Feature Reduction Strategies
+
+**Strategy 1: Dimensionality Reduction**
+```python
+# PCA on intermediate signatures
+pca = PCA(n_components=50)
+inter1_sig_reduced = pca.fit_transform(inter1_sig)  # 100→50
+inter2_sig_reduced = pca.transform(inter2_sig)      # 100→50
+# Total: 2 + 50 + 50 = 102 features (same as 2-hop!)
+```
+
+**Strategy 2: Signature Aggregation**
+```python
+# Single pooled signature across all intermediates
+all_intermediate_degrees = concat([inter1_degrees, inter2_degrees])
+pooled_sig = histogram_10x10(all_intermediate_degrees)  # Still 100 dims
+# Total: 2 + 100 = 102 features
+```
+
+**Strategy 3: Sequential Encoding (RNN/LSTM)**
+```python
+# Encode sequence of intermediate signatures
+signatures = [inter1_sig, inter2_sig, inter3_sig]  # Each 100-dim
+lstm = LSTM(input_dim=100, hidden_dim=64)
+encoded = lstm(signatures)  # Output: 64-dim encoding
+# Total: 2 + 64 = 66 features
+```
+
+#### 5.3 Test 4-Hop and 5-Hop
+- If 3-hop succeeds, extend to 4-hop and 5-hop
+- Use best feature reduction strategy from 5.2
+- Document: Maximum path length approach can handle
+
+#### 5.4 Computational Feasibility
+Measure for 5-hop metapaths:
+- Training time (should be <1 hour)
+- Memory usage (should fit in 64GB)
+- Inference time (should be <1 second per bin)
+
+### Success Criteria
+- ✅ 3-hop metapaths achieve r≥0.85
+- ✅ Feature reduction maintains performance
+- ✅ Scalable to 5-hop (training <2 hours, memory <64GB)
+- ✅ Approach generalizes across path lengths
+
+### Pros
+- **Core objective**: Longer paths are ultimate goal
+- **Demonstrates scaling**: Shows approach isn't limited to 2-hop
+- **Opens applications**: Most interesting metapaths are 3-4 hops
+- **Novel contribution**: Few methods handle 5-hop well
+
+### Cons
+- **High complexity**: Feature engineering gets difficult
+- **Overfitting risk**: 200-400 features on small dataset
+- **May not scale**: Approach might be 2-hop-specific
+- **Resource intensive**: Large matrices, slow training
+
+### Possible Failure Points
+
+#### Failure 1: Performance degrades for 3+ hops
+**Symptoms**: validation_r drops from 0.88 (2-hop) to 0.65 (3-hop)
+**Causes**:
+- Feature explosion causes overfitting
+- Longer paths have more complex dependencies
+- Degree signatures insufficient for multi-hop
+
+**Mitigation**:
+- Apply feature reduction (PCA, aggregation)
+- Use regularization (Lasso, Dropout)
+- Try LSTM encoding for sequences
+
+**Decision**: If r<0.75 for 3-hop after mitigation, REDESIGN needed
+
+#### Failure 2: Computational infeasibility
+**Symptoms**: Training takes >8 hours, uses >128GB RAM
+**Causes**:
+- Matrix operations scale poorly with path length
+- Intermediate signature computation expensive
+- Too many degree combinations
+
+**Mitigation**:
+- Stratified sampling (aggressive: 50 samples per bin)
+- Distributed computing across nodes
+- Approximate signatures (coarser bins)
+
+**Decision**: If >8 hours for single metapath, approach not practical
+
+#### Failure 3: Feature reduction loses signal
+**Symptoms**: PCA reduces features but validation_r drops
+**Causes**:
+- Important features discarded
+- Linear reduction insufficient for nonlinear patterns
+
+**Mitigation**:
+- Use autoencoders (nonlinear reduction)
+- Try different n_components for PCA
+- Use feature selection instead of reduction
+
+### Redesign Options (If Phase 5 Fails)
+
+**Option A: PathwayTransformer**
+- Handles variable-length paths
+- Attention learns important nodes
+- Risk: Memory, data size issues
+
+**Option B: Hybrid Compositional**
+- Use 2-hop predictions as building blocks
+- Predict 4-hop from two 2-hop predictions
+- Add correction terms for dependencies
+
+**Option C: Direct Permutation Sampling**
+- For 5-hop paths, directly sample permutations
+- Don't predict, just measure
+- Trade computation for accuracy
+
+**Option D: Path Sketching**
+- Use MinHash or Count-Min Sketch
+- Approximate pathway counts
+- Fast but approximate
+
+### Arguments For
+1. **Core objective** - Why we're doing this
+2. **Novel contribution** - Few methods handle 5-hop
+3. **Tests limits** - Know scalability bounds
+4. **Practical value** - Most interesting metapaths are 3-4 hops
+
+### Arguments Against
+1. **High failure risk** - May not scale
+2. **Resource intensive** - Weeks of development + compute
+3. **Premature** - Fix 2-hop first before extending
+4. **May need redesign** - Could waste effort if approach wrong
+
+**Verdict**: **CAUTIOUSLY IN FAVOR** - Core goal but after Phases 1-4 succeed
+
+---
+
+## Phase 6: Control Comparisons
+
+**Duration**: 2-3 days
+**Priority**: Medium - Publication requirement
+
+### Objectives
+1. Compare to negative control (random predictions)
+2. Compare to weak baseline (degree product)
+3. Compare to steelman (best alternative method)
+4. Validate that our approach provides value
+
+### Comparisons
+
+#### 6.1 Negative Control: Random Predictions
+```python
+# Predict random values from N(μ, σ) of training data
+random_predictions = np.random.normal(
+    loc=training_data['pathway_count'].mean(),
+    scale=training_data['pathway_count'].std(),
+    size=n_validation_bins
+)
+
+random_r = pearsonr(random_predictions, validation_actual)
+# Expected: r ≈ 0 (no correlation)
+```
+
+#### 6.2 Weak Baseline: Degree Product
+```python
+# Predict: pathway_count ∝ source_degree × target_degree
+degree_product_pred = source_degrees * target_degrees * scaling_factor
+
+degree_product_r = pearsonr(degree_product_pred, validation_actual)
+# Expected: r ≈ 0.4-0.6 (some signal)
+```
+
+#### 6.3 Steelman: Best Alternative
+Candidates:
+- **DWPC-based null** (Himmelstein et al.)
+- **Negative Binomial GLM** (from Pipeline 18b-18d)
+- **Random Forest** (from Pipeline 18e)
+- **Linear regression** (simplest ML baseline)
+
+```python
+# Compare performance
+methods = {
+    'Random': random_r,
+    'Degree Product': degree_product_r,
+    'Linear Regression': lr_r,
+    'NegBin GLM': glm_r,
+    'Random Forest': rf_r,
+    'Degree Sig NN': our_r
+}
+
+# Rank by validation_r
+ranked = sorted(methods.items(), key=lambda x: x[1], reverse=True)
+```
+
+### Success Criteria
+- ✅ Our method beats all baselines by ≥0.1 in r
+- ✅ Statistical significance (p<0.05, paired t-test)
+- ✅ Consistent across multiple metapaths
+- ✅ Clear visualization of comparison
+
+### Pros
+- **Publication requirement**: Need control comparisons
+- **Validates value**: Shows we're better than simpler methods
+- **Easy to implement**: Most baselines already exist
+- **Low risk**: Just evaluation, no training
+
+### Cons
+- **Doesn't improve model**: No accuracy gain
+- **Time investment**: 2-3 days for validation only
+- **Obvious results**: We should beat random/degree product
+- **Delay progress**: Doesn't advance Phase 5
+
+### Possible Failure Points
+
+#### Failure: Random Forest beats our method
+**Symptoms**: RF achieves r=0.90, ours r=0.88
+**Causes**:
+- RF better at capturing nonlinear patterns
+- Our NN underfit or poorly tuned
+- Feature engineering favors tree methods
+
+**Mitigation**:
+- Tune our NN hyperparameters more carefully
+- Try ensemble of NNs
+- Use RF as baseline, add NN-specific features
+
+**Decision**: If RF consistently beats NN, use RF instead
+
+### Arguments For
+1. **Publication requirement** - Reviewers expect this
+2. **Scientific rigor** - Must show value over baselines
+3. **Easy to do** - Baselines already implemented
+4. **Informs choice** - Might reveal better method
+
+### Arguments Against
+1. **Doesn't improve model** - Pure validation work
+2. **Results predictable** - Likely to win
+3. **Time cost** - 2-3 days for no performance gain
+4. **Can do later** - Not blocking other phases
+
+**Verdict**: **NEUTRAL** - Do it but lower priority, can be last
+
+---
+
+## Phase 7: Anomaly Detection Refinement
+
+**Duration**: 2-3 days
+**Priority**: Low - Post-modeling work
+
+### Objectives
+1. Apply multiple testing correction (FDR, Bonferroni)
+2. Validate significant anomalies
+3. Cross-reference with known biology
+4. Generate final anomaly catalog
+
+### Detailed Steps
+
+#### 7.1 Compute Z-scores
+```python
+# For each (compound, pathway) pair
+for i, j in all_pairs:
+    observed = original_graph_pathways[i, j]
+    expected = model.predict(degree_bin[i], degree_bin[j])
+    std = permutation_variance[degree_bin[i], degree_bin[j]]
+
+    z_score[i, j] = (observed - expected) / std
+```
+
+#### 7.2 Multiple Testing Correction
+```python
+from statsmodels.stats.multitest import multipletests
+
+# Compute p-values from z-scores
+p_values = 2 * (1 - norm.cdf(abs(z_scores)))
+
+# Apply FDR correction (Benjamini-Hochberg)
+reject, p_adj, _, _ = multipletests(p_values, alpha=0.05, method='fdr_bh')
+
+# Identify significant anomalies
+significant = pairs[reject]
+```
+
+#### 7.3 Validate Anomalies
+For top 100 anomalies:
+- Check: Are they known compound-pathway relationships?
+- Literature search: PubMed, DrugBank, KEGG
+- Biological plausibility: Mechanism of action makes sense?
+- Comparison to DWPC results: Agreement or novel?
+
+#### 7.4 Generate Anomaly Catalog
+```python
+anomalies_df = pd.DataFrame({
+    'compound_id': compound_ids,
+    'pathway_id': pathway_ids,
+    'observed_count': observed,
+    'expected_count': expected,
+    'z_score': z_scores,
+    'p_value_adj': p_adj,
+    'dwpc_score': dwpc_scores,
+    'known_relationship': is_known,
+    'literature_refs': pubmed_ids
+})
+
+# Categorize
+anomalies_df['category'] = categorize(z_score, dwpc_score, is_known)
+# Categories: Validated, Novel, Unexpected, False_Positive
+```
+
+### Success Criteria
+- ✅ Apply FDR correction at α=0.05
+- ✅ Validate top 20 anomalies via literature
+- ✅ Generate publishable anomaly catalog
+- ✅ Identify at least 5 novel relationships
+
+### Pros
+- **Clinical relevance**: Actual drug-pathway discoveries
+- **Publication value**: Tangible biological findings
+- **Validates pipeline**: End-to-end demonstration
+- **Low complexity**: Statistical methods well-established
+
+### Cons
+- **Requires good null model**: Dependent on Phases 1-5 success
+- **Time intensive**: Literature validation slow
+- **Biological expertise needed**: Need domain knowledge
+- **May find nothing novel**: Known relationships already cataloged
+
+### Possible Failure Points
+
+#### Failure: Too many false positives
+**Symptoms**: 500+ significant anomalies, but most are noise
+**Causes**:
+- Null model inaccurate (underestimates variance)
+- Multiple testing correction too lenient
+- Degree structure doesn't capture biology well
+
+**Mitigation**:
+- Stricter FDR threshold (α=0.01 or 0.001)
+- Bonferroni correction (very conservative)
+- Filter by DWPC agreement (require both significant)
+
+#### Failure: Too conservative (no discoveries)
+**Symptoms**: After FDR, only 2 significant anomalies
+**Causes**:
+- Null model too good (overestimates variance)
+- Multiple testing correction too strict
+- Biological signal weak
+
+**Mitigation**:
+- Relax FDR threshold (α=0.1)
+- Use Bayesian FDR (adaptive)
+- Focus on top 100 by z-score regardless of p-value
+
+#### Failure: Literature validation fails
+**Symptoms**: Top anomalies have no biological support
+**Causes**:
+- Model artifacts not biological signal
+- False positives passed multiple testing
+- Need wet-lab validation
+
+**Decision**: Report as hypotheses requiring experimental validation
+
+### Arguments For
+1. **Demonstrates value** - What is this for?
+2. **Publication requirement** - Need biological findings
+3. **Clinical impact** - Drug repurposing potential
+4. **Validates entire pipeline** - End-to-end test
+
+### Arguments Against
+1. **Dependent on earlier phases** - Can't do until 1-5 complete
+2. **Not core modeling work** - Downstream application
+3. **Time intensive** - Literature review slow
+4. **May need wet-lab** - Computational findings need validation
+
+**Verdict**: **IN FAVOR but LAST** - Do after all modeling complete
+
+---
+
+## Risk Assessment
+
+### High-Risk Phases
+1. **Phase 5 (Longer paths)**: May not scale, feature explosion, computational limits
+2. **Phase 3 (Features)**: Overfitting risk with 116 features on 100 samples
+
+### Medium-Risk Phases
+1. **Phase 1 (Baseline)**: May discover performance worse than expected
+2. **Phase 4 (Multi-metapath)**: Some metapaths may fail, inconsistent results
+
+### Low-Risk Phases
+1. **Phase 2 (Bins)**: Easy to test, low cost
+2. **Phase 6 (Controls)**: Just validation, baselines exist
+3. **Phase 7 (Anomalies)**: Standard statistical methods
+
+### Mitigation Strategies
+
+**For overfitting**:
+- Regularization (L2, Dropout)
+- Feature selection (Lasso, importance)
+- Cross-validation
+- Ensemble methods
+
+**For computational limits**:
+- Stratified sampling
+- Distributed computing
+- Approximate methods (sketching)
+- Coarser bins
+
+**For poor generalization**:
+- Metapath-specific architectures
+- Transfer learning
+- Meta-learning (learn to predict hyperparameters)
+
+---
+
+## Decision Points and Contingencies
+
+### After Phase 1
+**If r < 0.75**: STOP, debug, fix bugs before proceeding
+**If 0.75 < r < 0.85**: Continue but lower expectations
+**If r ≥ 0.85**: Proceed as planned
+
+### After Phase 2
+**If no improvement**: Skip bin optimization, focus on features
+**If significant improvement**: Apply optimal bins to all metapaths
+
+### After Phase 3
+**If r < 0.88**: Features don't help, investigate why
+**If 0.88 < r < 0.90**: Modest improvement, acceptable
+**If r ≥ 0.90**: **SUCCESS**, proceed to validation
+
+### After Phase 4
+**If <50% metapaths succeed**: Approach not general, need redesign
+**If 50-75% succeed**: Identify failure modes, document limits
+**If >75% succeed**: Strong generalization, proceed to longer paths
+
+### After Phase 5
+**If 3-hop fails**: Stop at 2-hop, use compositional for longer paths
+**If 3-hop succeeds but 4-hop fails**: Limit to 3-hop in paper
+**If 5-hop succeeds**: **MAJOR SUCCESS**, headline result
+
+---
+
+## Timeline and Milestones
+
+### Week 1
+- Days 1-3: Phase 1 (Baseline validation)
+- Days 4-5: Phase 2 (Bin resolution)
+
+**Milestone**: Validated baseline, optimal bins identified
+
+### Week 2
+- Days 1-4: Phase 3 (Feature ablation)
+  - Day 1: Regenerate data from permutations
+  - Days 2-4: Train, evaluate, analyze
+
+**Milestone**: Optimal feature set identified, r≥0.90 achieved (goal)
+
+### Week 3
+- Days 1-5: Phase 4 (Multi-metapath validation)
+  - Train 5-8 metapaths in parallel
+  - Analyze generalization patterns
+
+**Milestone**: Generalization validated, failure modes documented
+
+### Week 4
+- Days 1-3: Phase 5 (Longer paths)
+  - Test 3-hop metapaths
+  - Feature reduction strategies
+- Days 4-5: Phase 6 (Controls)
+
+**Milestone**: Scalability assessed, comparisons complete
+
+### Week 5 (if needed)
+- Days 1-3: Phase 7 (Anomaly detection)
+- Days 4-5: Paper writing, figure generation
+
+**Milestone**: Final results, anomaly catalog, manuscript draft
+
+---
+
+## Success Metrics
+
+### Minimum Viable Product (MVP)
+- ✅ Baseline validated (r≈0.88)
+- ✅ Works on 4+ metapaths
+- ✅ Documented limitations
+- ✅ Beats all baselines
+
+### Target Success
+- ✅ Feature ablation improves to r≥0.90
+- ✅ 6/8 metapaths achieve r≥0.85
+- ✅ 3-hop paths work (r≥0.85)
+- ✅ Novel biological findings
+
+### Stretch Goals
+- ✅ r≥0.95 achieved
+- ✅ 8/8 metapaths succeed
+- ✅ 5-hop paths work
+- ✅ 10+ validated drug repurposing candidates
+
+---
+
+## Resource Requirements
+
+### Compute
+- **HPC access**: Required for permutation data
+- **GPU**: Not required (small models, fast training)
+- **RAM**: 64GB sufficient for most metapaths
+- **Time**: ~100 CPU-hours per metapath (full pipeline)
+
+### Data
+- **Permutations 1-30**: Already downloaded
+- **Hetionet v1.0**: Available
+- **Storage**: ~50GB for all data and results
+
+### Personnel
+- **ML engineer**: Primary developer (1 FTE)
+- **Domain expert**: Biological validation (0.2 FTE)
+- **Statistician**: Multiple testing advice (consultation)
+
+---
+
+## Conclusion
+
+This plan provides a systematic path from validating the current baseline (r=0.88) to achieving the target performance (r≥0.90), validating generalization, and scaling to longer metapaths (3-5 hops). The approach balances optimization (Phases 2-3), validation (Phases 4, 6), and scaling (Phase 5).
+
+**Key insights**:
+- Phase 1 is critical and blocking - must establish baseline first
+- Phase 3 (features) has highest potential for improvement
+- Phase 5 (longer paths) is high-risk but core objective
+- Multiple decision points allow pivoting based on results
+
+**Expected outcomes**:
+- Best case: r≥0.95, works for 5-hop paths, novel discoveries
+- Realistic: r≈0.90, works for 3-hop paths, some improvements
+- Worst case: r≈0.88 is optimal, document limitations, 2-hop only
+
+**Next step**: Execute Phase 1 to establish empirical baseline before committing to optimization strategy.
+
+---
+
+**Document Status**: Complete
+**Related Documents**:
+- `2025-10-30_RESOLUTION_AND_ARCHITECTURE_FINDINGS.md` (context)
+- `PIPELINE18_BASELINE_VALIDATION.md` (to be created in Phase 1)
+
+**Review Status**: Pending user approval
