@@ -1,7 +1,5 @@
-"""Run learned analytical formula workflow without papermill (A2 migration of notebook 8).
+"""Run learned analytical formula workflow.
 
-This script supports the notebook 8 baseline flow and optional degree-analysis
-extensions from the notebook 8-with-degree workflow.
 """
 
 from __future__ import annotations
