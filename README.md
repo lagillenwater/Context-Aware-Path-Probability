@@ -65,6 +65,9 @@ poetry run poe <task-name>     # run a task
   - Uses `data/permutations/###.hetmat/edges/*.sparse.npz`.
   - Quick sample: `poe train-null-models --edge-type CbG --training-perm-end 2 --validation-perm-start 3 --validation-perm-end 4 --skip-empirical-validation`.
 5. `compose-null` – compositional null fitting
+  - Defaults: metapath `CbGpPW` (`CbG -> GpPW`) using validation permutations `21-30`.
+  - Outputs to `results/compositional_null/` (validation CSVs, summary, optional plot/checkpoint).
+  - Quick sample: `poe compose-null --validation-perm-start 1 --validation-perm-end 2 --max-pairs 5000 --skip-plot`.
 6. `build-metapath-nulls` – metapath null distributions
 7. `validate-composition` – compositional validation
 8. `analyze-composition-failures` – failure analysis
