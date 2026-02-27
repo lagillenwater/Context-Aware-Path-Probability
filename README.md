@@ -115,6 +115,119 @@ poetry run poe <task-name>     # run a task
   - Quick sample:
     - `poe model-testing-summary --edge-type CtD --skip-plots`
 
+### A2 script-first notebook workflows
+
+1. `pathway-data-preparation` (notebook 18a replacement)
+  - Builds degree-binned training data for pathway-NN benchmarks.
+  - Default metapath: `CbGpPW` (or run all defaults with `--all-metapaths`).
+  - Outputs under `results/pathway_nn/training_data/`:
+    - `<METAPATH>_training_data.csv`
+    - `<METAPATH>_training_data_summary.json`
+    - `pathway_data_preparation_run_summary.json`
+  - Quick samples:
+    - `poe pathway-data-preparation --metapath CbGpPW`
+    - `poe pathway-data-preparation --all-metapaths`
+
+2. `pathway-train-random` (notebook 18b replacement)
+  - Trains random baseline on degree-binned pathway data and writes benchmark metadata.
+  - Outputs:
+    - `results/pathway_nn/trained_models/<METAPATH>_Random.pkl`
+    - `results/pathway_nn/benchmarks/<METAPATH>_Random_benchmark.json`
+    - `results/pathway_nn/benchmarks/pathway_train_random_run_summary.json`
+  - Quick sample:
+    - `poe pathway-train-random --metapath CbGpPW`
+
+3. `pathway-train-degree-product` (notebook 18c replacement)
+  - Trains degree-product baseline on degree-binned pathway data.
+  - Uses notebook-parity synthetic edge-probability proxy columns for current compatibility.
+  - Outputs:
+    - `results/pathway_nn/trained_models/<METAPATH>_Degree_Product.pkl`
+    - `results/pathway_nn/benchmarks/<METAPATH>_Degree_Product_benchmark.json`
+    - `results/pathway_nn/benchmarks/pathway_train_degree_product_run_summary.json`
+  - Quick sample:
+    - `poe pathway-train-degree-product --metapath CbGpPW`
+
+4. `pathway-train-negbin-glm` (notebook 18d replacement)
+  - Trains Negative Binomial GLM baseline on degree-binned pathway data.
+  - Uses statsmodels NegBin GLM when available; falls back to deterministic log-linear fit if needed.
+  - Outputs:
+    - `results/pathway_nn/trained_models/<METAPATH>_NegBin_GLM.pkl`
+    - `results/pathway_nn/benchmarks/<METAPATH>_NegBin_GLM_benchmark.json`
+    - `results/pathway_nn/benchmarks/pathway_train_negbin_glm_run_summary.json`
+  - Quick sample:
+    - `poe pathway-train-negbin-glm --metapath CbGpPW`
+
+5. `pathway-train-random-forest` (notebook 18e replacement)
+  - Trains random forest baseline on degree-binned pathway data.
+  - Outputs:
+    - `results/pathway_nn/trained_models/<METAPATH>_Random_Forest.pkl`
+    - `results/pathway_nn/benchmarks/<METAPATH>_Random_Forest_benchmark.json`
+    - `results/pathway_nn/benchmarks/pathway_train_random_forest_run_summary.json`
+  - Quick sample:
+    - `poe pathway-train-random-forest --metapath CbGpPW`
+
+6. `pathway-train-degree-signature-nn` (notebook 18f replacement)
+  - Trains the Degree Signature neural network on degree-bin pathway features.
+  - Outputs:
+    - `results/pathway_nn/trained_models/<METAPATH>_Degree_Sig_NN.pt`
+    - `results/pathway_nn/benchmarks/<METAPATH>_Degree_Sig_NN_benchmark.json`
+    - `results/pathway_nn/visualizations/<METAPATH>_Degree_Sig_NN_validation.png`
+    - `results/pathway_nn/intermediate/<METAPATH>_test_*.npy`
+    - `results/pathway_nn/benchmarks/pathway_train_degree_signature_nn_run_summary.json`
+  - Quick sample:
+    - `poe pathway-train-degree-signature-nn --metapath CbGpPW --skip-plots`
+
+7. `pathway-variance-estimation` (notebook 18g replacement)
+  - Validates the trained Degree Sig NN against permutation graphs and estimates per-bin variance.
+  - If `--n-inter-bins` does not match the checkpoint input size, the task infers bins from the checkpoint and logs the adjustment.
+  - Outputs:
+    - `results/pathway_nn/variance_analysis/<METAPATH>_variance_estimates.csv`
+    - `results/pathway_nn/variance_analysis/<METAPATH>_permutation_metrics.csv`
+    - `results/pathway_nn/variance_analysis/<METAPATH>_validation_summary.json`
+    - `results/pathway_nn/variance_analysis/permutation_<ID>_predictions.npy`
+    - `results/pathway_nn/variance_analysis/all_permutations_results.npz`
+    - `results/pathway_nn/variance_analysis/<METAPATH>_permutation_validation.png` (unless `--skip-plots`)
+  - Quick sample:
+    - `poe pathway-variance-estimation --metapath CbGpPW --n-permutations 2 --skip-plots`
+
+8. `pathway-anomaly-detection` (notebook 18h replacement)
+  - Computes positive anomalies (enrichment only), compares to DWPC, and exports ranked discoveries.
+  - If `--n-inter-bins` does not match the checkpoint input size, the task infers bins from the checkpoint and logs the adjustment.
+  - Outputs:
+    - `results/pathway_nn/anomaly_detection/<METAPATH>_all_anomalies.csv`
+    - `results/pathway_nn/anomaly_detection/<METAPATH>_significant_anomalies.csv`
+    - `results/pathway_nn/anomaly_detection/<METAPATH>_novel_discoveries.csv`
+    - `results/pathway_nn/anomaly_detection/<METAPATH>_anomaly_summary.json`
+    - `results/pathway_nn/anomaly_detection/<METAPATH>_volcano_plot.png` (unless `--skip-plots`)
+    - `results/pathway_nn/anomaly_detection/<METAPATH>_dwpc_comparison.png` (unless `--skip-plots`)
+    - `results/pathway_nn/anomaly_detection/<METAPATH>_anomaly_distributions.png` (unless `--skip-plots`)
+  - Quick sample:
+    - `poe pathway-anomaly-detection --metapath CbGpPW --max-pairs 5000 --skip-plots`
+
+9. `learned-analytical` (notebook 8 replacement)
+  - Trains/evaluates learned analytical formula variants and degree diagnostics.
+  - Outputs under `results/learned_formula/`.
+  - Quick sample:
+    - `poe learned-analytical --edge-type CtD --n-candidates 2 3 5 --skip-comparison-plot`
+
+10. `degree-conditioned-compositionality` (notebook 11.x replacement)
+  - Degree-conditioned compositional analysis (Option A style) for a selected 2-hop metapath.
+  - Outputs under `results/compositionality/`.
+  - Quick sample:
+    - `poe degree-conditioned-compositionality --metapath CbGpPW --perm-start 1 --perm-end 2 --max-pairs 5000 --skip-plots`
+
+11. `degree-aware-compositional-model` (notebook 12 replacement)
+  - Compares naive vs continuous degree-aware compositional predictions.
+  - Outputs under `results/compositionality/degree_aware/`.
+  - Quick sample:
+    - `poe degree-aware-compositional-model --metapath CbGpPW --perm-start 1 --perm-end 2 --max-pairs 5000 --skip-plots`
+
+12. `nn-architecture-exploration` (notebook 21 replacement)
+  - Runs script-first optimizer/loss/architecture tests and saves analysis artifacts.
+  - Outputs under `results/nn_optimizer_comparison/`.
+  - Quick sample:
+    - `poe nn-architecture-exploration --tests 1,2 --max-samples 5000 --max-epochs-linear 5 --patience-linear 3 --skip-plots --no-save-pkl`
+
 ### Figures & diagnostics
 - `make-pathcount-heatmaps` – path-count variance figures
 - `assess-length-effects` – length degradation scripts
@@ -152,6 +265,19 @@ poetry run poe analyze-composition-failures
 # A2 model-comparison (notebook 4/5 replacement)
 poetry run poe model-comparison-analysis --edge-type CtD --skip-plots --max-all-pairs 300000
 poetry run poe model-testing-summary --edge-type CtD --skip-plots
+# A2 migrated notebook workflows (examples)
+poetry run poe pathway-data-preparation --metapath CbGpPW
+poetry run poe pathway-train-random --metapath CbGpPW
+poetry run poe pathway-train-degree-product --metapath CbGpPW
+poetry run poe pathway-train-negbin-glm --metapath CbGpPW
+poetry run poe pathway-train-random-forest --metapath CbGpPW
+poetry run poe pathway-train-degree-signature-nn --metapath CbGpPW --skip-plots
+poetry run poe pathway-variance-estimation --metapath CbGpPW --n-permutations 2 --skip-plots
+poetry run poe pathway-anomaly-detection --metapath CbGpPW --max-pairs 5000 --skip-plots
+poetry run poe learned-analytical --edge-type CtD --n-candidates 2 3 5 --skip-comparison-plot
+poetry run poe degree-conditioned-compositionality --metapath CbGpPW --perm-start 1 --perm-end 2 --max-pairs 5000 --skip-plots
+poetry run poe degree-aware-compositional-model --metapath CbGpPW --perm-start 1 --perm-end 2 --max-pairs 5000 --skip-plots
+poetry run poe nn-architecture-exploration --tests 1,2 --max-samples 5000 --max-epochs-linear 5 --patience-linear 3 --skip-plots --no-save-pkl
 # Figures / phases as needed
 ```
 
@@ -165,4 +291,5 @@ poetry run poe model-testing-summary --edge-type CtD --skip-plots
 - Empirical edge frequencies generated
 - Null/compositional models trained
 - A2 model-comparison outputs generated (`model-comparison-analysis` + `model-testing-summary`)
+- A2 script-first notebook outputs generated (`pathway-data-preparation`, `pathway-train-random`, `pathway-train-degree-product`, `pathway-train-negbin-glm`, `pathway-train-random-forest`, `pathway-train-degree-signature-nn`, `pathway-variance-estimation`, `pathway-anomaly-detection`, `learned-analytical`, `degree-conditioned-compositionality`, `degree-aware-compositional-model`, `nn-architecture-exploration`)
 - Figures/phase scripts executed as needed
