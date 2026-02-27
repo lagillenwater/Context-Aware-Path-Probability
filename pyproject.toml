@@ -26,8 +26,8 @@ poethepoet = "^0.25.0"
 
 [tool.poe.env]
 PYTHONPATH = "${PYTHONPATH}:${POE_PROJECT_ROOT}"
-# Default to the standard CAPP env python; override if your install path differs.
-CAPP_PY = "/opt/miniconda3/envs/CAPP/bin/python"
+# Use the active environment's python by default; override CAPP_PY if needed.
+CAPP_PY = "python"
 
 [tool.poe.tasks]
 fetch-hetmat = "${CAPP_PY} scripts/build_hetmat.py"
