@@ -78,6 +78,9 @@ poetry run poe <task-name>     # run a task
   - Outputs to `results/compositional_validation/` (`accuracy_by_metapath.csv`, `per_permutation_metrics.csv`, `validation_summary.json`, optional plots).
   - Quick sample: `poe validate-composition --metapath CbGpPW --train-perms-end 2 --valid-perms-start 3 --valid-perms-end 4 --max-compared-pairs 20000 --skip-plot`.
 8. `analyze-composition-failures` – failure analysis
+  - Runs stratified residual analysis by degree bins and reports where compositional predictions fail.
+  - Outputs to `results/compositional_validation/` (`failure_analysis.csv`, `degree_stratified_correlations.csv`, `correction_analysis.csv`, optional plots).
+  - Quick sample: `poe analyze-composition-failures --metapath CbGpPW --train-perms-end 2 --valid-perms-start 3 --valid-perms-end 4 --n-degree-bins 4 --samples-per-bin 20 --max-locations 10000 --skip-plot`.
 
 ### Figures & diagnostics
 - `make-pathcount-heatmaps` – path-count variance figures
