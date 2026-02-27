@@ -99,11 +99,24 @@ def main():
 
     hetmat = hetmatpy.hetmat.HetMat(DATA)
     namer = (f"{x:03d}" for x in itertools.count(start=start_idx))
-    stats = hetmat.permute_graph(
-        num_new_permutations=num_new,
-        namer=namer,
-        seed=args.seed,
-    )
+
+    all_stats = []
+    for i in range(num_new):
+        perm_name = next(namer)
+        # Advance seed per permutation for reproducibility differences
+        perm_seed = args.seed + i
+        print(f"[{i+1}/{num_new}] starting permutation {perm_name} (seed {perm_seed})", flush=True)
+        perm_stats = hetmat.permute_graph(
+            num_new_permutations=1,
+            namer=iter([perm_name]),
+            seed=perm_seed,
+        )
+        metaedge_count = perm_stats["metaedge"].nunique()
+        print(f"[{i+1}/{num_new}] built permutation {perm_name} (seed {perm_seed}) "
+              f"with {metaedge_count} metaedges")
+        all_stats.append(perm_stats)
+
+    stats = pd.concat(all_stats, ignore_index=True)
 
     # Summarize results
     by_perm = stats.groupby("permutation")["metaedge"].nunique().reset_index()
