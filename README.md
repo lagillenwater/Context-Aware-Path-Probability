@@ -60,7 +60,10 @@ poetry run poe <task-name>     # run a task
    - Parameters: `--count N` (total permutations desired, incl. existing; default 50), `--seed S` (base seed; default 42), `--start K` (force starting index; default = next unused).  
    - Examples: `poe generate-permutations --count 10`, `poe generate-permutations --count 60 --seed 123`, `poe generate-permutations --start 20 --count 25`.
 3. `compute-edge-frequencies` – empirical edge frequencies (feeds compositional notebooks)
-4. `train-null-models` – null model training
+4. `train-null-models` – null model training (`results/null_models/`)
+  - Defaults: train on permutations `1-20`, validate on `21-30`.
+  - Uses `data/permutations/###.hetmat/edges/*.sparse.npz`.
+  - Quick sample: `poe train-null-models --edge-type CbG --training-perm-end 2 --validation-perm-start 3 --validation-perm-end 4 --skip-empirical-validation`.
 5. `compose-null` – compositional null fitting
 6. `build-metapath-nulls` – metapath null distributions
 7. `validate-composition` – compositional validation
