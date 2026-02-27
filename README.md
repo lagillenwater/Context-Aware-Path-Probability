@@ -74,6 +74,9 @@ poetry run poe <task-name>     # run a task
   - Outputs to `results/metapath_nulls/`.
   - Quick sample: `poe build-metapath-nulls --metapath CbGpPW --model-type rf --max-pairs 5000 --skip-plot`.
 7. `validate-composition` – compositional validation
+  - Validates compositional predictions across held-out permutations for default 2-hop metapaths.
+  - Outputs to `results/compositional_validation/` (`accuracy_by_metapath.csv`, `per_permutation_metrics.csv`, `validation_summary.json`, optional plots).
+  - Quick sample: `poe validate-composition --metapath CbGpPW --train-perms-end 2 --valid-perms-start 3 --valid-perms-end 4 --max-compared-pairs 20000 --skip-plot`.
 8. `analyze-composition-failures` – failure analysis
 
 ### Figures & diagnostics
