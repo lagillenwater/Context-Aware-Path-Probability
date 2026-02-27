@@ -40,6 +40,14 @@ def existing_permutation_ids():
     return sorted(ids)
 
 
+def expected_metaedge_files(hetmat):
+    """Return the expected filenames for each metaedge (no inverts)."""
+    files = set()
+    for me in hetmat.metagraph.get_edges(exclude_inverts=True):
+        files.add(f"{me.get_abbrev()}.sparse.npz")
+    return files
+
+
 def clean_bak_dirs():
     """Remove any leftover *.hetmat.bak directories."""
     if not PERM_DIR.exists():
@@ -47,6 +55,18 @@ def clean_bak_dirs():
     for bak in PERM_DIR.glob("*.hetmat.bak"):
         print(f"Removing stale backup: {bak.name}")
         shutil.rmtree(bak, ignore_errors=True)
+
+
+def remove_incomplete_perms(expected_files):
+    """Delete any permutation directories that are missing expected edge files."""
+    if not PERM_DIR.exists():
+        return
+    for perm_dir in PERM_DIR.glob("*.hetmat"):
+        edges = perm_dir / "edges"
+        have = {p.name for p in edges.glob("*.npz")} if edges.exists() else set()
+        if have != expected_files:
+            print(f"Removing incomplete permutation {perm_dir.name} ({len(have)}/{len(expected_files)} files)")
+            shutil.rmtree(perm_dir, ignore_errors=True)
 
 
 def parse_args():
@@ -82,7 +102,11 @@ def main():
         print("ERROR: data/edges missing. Run `poe fetch-hetmat` first.", file=sys.stderr)
         sys.exit(1)
 
+    hetmat = hetmatpy.hetmat.HetMat(DATA)
+    expected_files = expected_metaedge_files(hetmat)
+
     clean_bak_dirs()
+    remove_incomplete_perms(expected_files)
 
     existing = existing_permutation_ids()
     if len(existing) >= args.count:
@@ -97,7 +121,6 @@ def main():
         f"(seed base {args.seed})"
     )
 
-    hetmat = hetmatpy.hetmat.HetMat(DATA)
     namer = (f"{x:03d}" for x in itertools.count(start=start_idx))
 
     all_stats = []
@@ -111,9 +134,22 @@ def main():
             namer=iter([perm_name]),
             seed=perm_seed,
         )
+        perm_dir = PERM_DIR / f"{perm_name}.hetmat"
+        edges = perm_dir / "edges"
+        have = {p.name for p in edges.glob("*.npz")} if edges.exists() else set()
         metaedge_count = perm_stats["metaedge"].nunique()
+        if have != expected_files:
+            missing = sorted(expected_files - have)
+            extra = sorted(have - expected_files)
+            print(f"ERROR: permutation {perm_name} incomplete "
+                  f"({len(have)}/{len(expected_files)} files). "
+                  f"Missing: {missing or '[]'} Extra: {extra or '[]'}", file=sys.stderr)
+            print("Cleaning up incomplete directory...", file=sys.stderr)
+            shutil.rmtree(perm_dir, ignore_errors=True)
+            sys.exit(1)
+
         print(f"[{i+1}/{num_new}] built permutation {perm_name} (seed {perm_seed}) "
-              f"with {metaedge_count} metaedges")
+              f"with {metaedge_count} metaedges / {len(expected_files)} files")
         all_stats.append(perm_stats)
 
     stats = pd.concat(all_stats, ignore_index=True)
