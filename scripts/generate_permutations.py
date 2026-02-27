@@ -1,4 +1,4 @@
-"""Generate degree-preserving Hetionet permutations (no papermill required).
+"""Generate degree-preserving Hetionet permutations.
 
 Behavior
 - Requires an existing hetmat in ``data/`` (run `poe fetch-hetmat` first).

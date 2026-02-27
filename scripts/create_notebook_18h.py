@@ -49,10 +49,10 @@ cells.append({
         "```bash\n"
         "# Local execution\n"
         "jupyter nbconvert --execute notebooks/18h_anomaly_detection.ipynb\n\n"
-        "# HPC execution with papermill\n"
-        "papermill notebooks/18h_anomaly_detection.ipynb \\\n"
-        "    notebooks/executed/18h_anomaly_detection_executed.ipynb \\\n"
-        "    -p metapath \"CbGpPW\"\n"
+        "# HPC execution (batch notebook execution)\n"
+        "jupyter nbconvert --to notebook --execute notebooks/18h_anomaly_detection.ipynb \\\n"
+        "    --output 18h_anomaly_detection_executed.ipynb \\\n"
+        "    --output-dir notebooks/executed\n"
         "```\n\n"
         "## References\n"
         "- Himmelstein et al. (2017). eLife. https://doi.org/10.7554/eLife.26726\n"
@@ -67,7 +67,7 @@ cells.append({
     "metadata": {},
     "outputs": [],
     "source": [
-        "# Papermill parameters\n"
+        "# Notebook parameters\n"
         "metapath = 'CbGpPW'\n"
         "edge1_type = 'CbG'\n"
         "edge2_type = 'GpPW'\n"

@@ -136,3 +136,5 @@ models/
 # results
 results/
 .DS_Store
+TODO.md
+TRACK_*_STATUS.md

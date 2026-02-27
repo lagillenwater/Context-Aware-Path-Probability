@@ -118,7 +118,7 @@ def organize_permutations(source_dir, target_dir):
     if len(permutation_items) > 5:
         print(f"... and {len(permutation_items) - 5} more")
     
-    # Automatically proceed with organization (removed interactive prompt for papermill)
+    # Automatically proceed with organization (non-interactive by default)
     if permutation_items:
         print("Proceeding with organizing permutations...")
         for item in tqdm(permutation_items, desc="Organizing"):

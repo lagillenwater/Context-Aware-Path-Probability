@@ -26,10 +26,26 @@ You can use either Poetry or the existing conda environment. Pick one and stick 
 > Tip: If you use conda, the `poe` runner is available via `conda run -n CAPP poe ...` or after `conda activate CAPP` if poethepoet is installed in that env.
 
 ## Data prerequisites
-- Hetionet hetmat and permutations expected under `data/`:
+- Hetionet hetmat and generated permutations expected under `data/`:
   - Base graph: `data/edges/*.sparse.npz`
-  - Perms: `data/permutations/###.hetmat/edges/*.npz`
+  - Generated perms: `data/permutations/###.hetmat/edges/*.npz`
+- Downloaded prebuilt permutations land under:
+  - `data/downloads/hetionet-permutations/permutations/*.hetmat`
 - Empirical edge-frequency CSVs (produced by `compute-edge-frequencies`) land in `results/empirical_edge_frequencies/`.
+
+### Permutation sources
+- `generate-permutations` builds local degree-preserved permutations in `data/permutations/`.
+  - Supports `--count/--seed/--start`.
+- `download-permutations` fetches the full prebuilt Hetionet bundle (about 200 permutations) into `data/downloads/hetionet-permutations/`.
+  - This task does **not** support `--count`.
+  - Current source ZIP size is ~`863 MB` (about `823 MiB`) before extraction.
+  - Typical wall-clock estimate (download + extract):
+    - fast links: ~`4-12` minutes
+    - slower links: ~`15-35` minutes
+
+Use-cases:
+- Core null/compositional pipeline and most figure scripts read from `data/permutations/`.
+- `compute-edge-frequencies` (notebook 3 workflow) reads downloaded permutations from `data/downloads/hetionet-permutations/permutations/`.
 
 ## Task runner
 All pipelines are encoded as Poethepoet tasks. Run from repo root:
@@ -39,7 +55,7 @@ poetry run poe <task-name>     # run a task
 ```
 
 ### Core data + null pipeline
-1. `fetch-hetmat` – uses the CAPP env python (default path in pyproject). If `data/` already contains a hetmat, it validates metanode/metaedge counts; if not, it downloads Hetionet v1.0 JSON (https://github.com/dhimmel/hetionet/raw/76550e6c93fbe92124edc71725e8c7dd4ca8b1f5/hetnet/json/hetionet-v1.0.json.bz2) and builds hetmat into `data/`. If your env lives elsewhere, set `CAPP_PY` to your python path before running poe tasks.
+1. `fetch-hetmat` – uses the active environment's `python` by default. If `data/` already contains a hetmat, it validates metanode/metaedge counts; if not, it downloads Hetionet v1.0 JSON (https://github.com/dhimmel/hetionet/raw/76550e6c93fbe92124edc71725e8c7dd4ca8b1f5/hetnet/json/hetionet-v1.0.json.bz2) and builds hetmat into `data/`. If needed, override by setting `CAPP_PY` before running poe tasks.
 2. `generate-permutations` **or** `download-permutations` – generate missing degree-preserved permutations (default target 50; skips existing) or fetch prebuilt ones  
    - Parameters: `--count N` (total permutations desired, incl. existing; default 50), `--seed S` (base seed; default 42), `--start K` (force starting index; default = next unused).  
    - Examples: `poe generate-permutations --count 10`, `poe generate-permutations --count 60 --seed 123`, `poe generate-permutations --start 20 --count 25`.
