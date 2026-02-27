@@ -22,5 +22,6 @@ dependencies:
   - tqdm=4.67.1
   
   - pip:
+      - poethepoet==0.25.0
       - hetmatpy==0.1.0
       - hetnetpy==0.3.1
