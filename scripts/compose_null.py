@@ -1,6 +1,4 @@
-"""Compute compositional null probabilities without papermill.
-
-This script ports notebook 14 (optimized compositional null) into a direct CLI.
+"""Compute compositional null probabilities.
 """
 
 from __future__ import annotations

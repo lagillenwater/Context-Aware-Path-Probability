@@ -69,6 +69,10 @@ poetry run poe <task-name>     # run a task
   - Outputs to `results/compositional_null/` (validation CSVs, summary, optional plot/checkpoint).
   - Quick sample: `poe compose-null --validation-perm-start 1 --validation-perm-end 2 --max-pairs 5000 --skip-plot`.
 6. `build-metapath-nulls` – metapath null distributions
+  - Computes observed 2-edge metapath path probabilities and compares to compositional null predictions.
+  - Defaults: metapaths `CbGpPW`, `CtDaG`, `CrCbG`, `CbGaD`; model types `rf` and `poly`.
+  - Outputs to `results/metapath_nulls/`.
+  - Quick sample: `poe build-metapath-nulls --metapath CbGpPW --model-type rf --max-pairs 5000 --skip-plot`.
 7. `validate-composition` – compositional validation
 8. `analyze-composition-failures` – failure analysis
 
