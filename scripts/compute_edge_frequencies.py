@@ -86,7 +86,21 @@ def parse_args() -> argparse.Namespace:
         default=10,
         help="Print progress every N permutations.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    validate_args(args)
+    return args
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    if args.max_perms is not None and args.max_perms <= 0:
+        raise ValueError("--max-perms must be > 0")
+    if args.progress_every < 0:
+        raise ValueError("--progress-every must be >= 0")
+    for edge_file in args.edge_file:
+        if not edge_file.endswith(".sparse.npz"):
+            raise ValueError(
+                f"--edge-file value '{edge_file}' must end with '.sparse.npz'"
+            )
 
 
 def get_perm_folders(perm_dir: Path, max_perms: int | None) -> list[Path]:

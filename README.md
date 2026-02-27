@@ -82,6 +82,39 @@ poetry run poe <task-name>     # run a task
   - Outputs to `results/compositional_validation/` (`failure_analysis.csv`, `degree_stratified_correlations.csv`, `correction_analysis.csv`, optional plots).
   - Quick sample: `poe analyze-composition-failures --metapath CbGpPW --train-perms-end 2 --valid-perms-start 3 --valid-perms-end 4 --n-degree-bins 4 --samples-per-bin 20 --max-locations 10000 --skip-plot`.
 
+### Manuscript model-comparison workflow 
+
+1. `model-comparison-analysis` 
+  - Main outputs under `results/model_comparison/<EDGE_TYPE>_results/`:
+    - `model_comparison.csv`
+    - `models_vs_analytical_comparison.csv`
+    - `test_vs_empirical_comparison.csv` (if empirical frequencies exist)
+    - `raw_logit_comparison.csv`
+    - `probability_vs_raw_logit_comparison.csv`
+    - optional all-pairs exports:
+      - `<EDGE_TYPE>_all_model_predictions.csv(.gz)`
+      - `<EDGE_TYPE>_predictions_by_degree.csv`
+      - `<EDGE_TYPE>_predictions_metadata.json`
+  - Quick sample (terminal smoke test):
+    - `poe model-comparison-analysis --edge-type CtD --skip-plots --max-all-pairs 300000`
+  - Notes:
+    - All-pairs prediction export is guarded by `--max-all-pairs` (default `2,000,000`) to avoid huge files on dense edge types.
+    - For dense edge types, leave defaults (auto-skip) or disable with `--no-generate-all-predictions`.
+
+2. `model-testing-summary` 
+  - Aggregates per-edge outputs from `results/model_comparison/*_results/`.
+  - Writes summaries to `results/model_comparison_summary_with_degree/`, including:
+    - `model_comparison_all_edges.csv`
+    - `analytical_comparison_all_edges.csv`
+    - `empirical_comparison_all_edges.csv`
+    - `model_performance_summary.csv`
+    - `graph_characteristics.csv`
+    - `degree_analysis_summary.json`
+  - Optional degree-analysis aggregation output:
+    - `aggregate_degree_metrics.csv` (if degree metrics exist or `--run-degree-analysis` is enabled)
+  - Quick sample:
+    - `poe model-testing-summary --edge-type CtD --skip-plots`
+
 ### Figures & diagnostics
 - `make-pathcount-heatmaps` – path-count variance figures
 - `assess-length-effects` – length degradation scripts
@@ -116,6 +149,9 @@ poetry run poe compose-null
 poetry run poe build-metapath-nulls
 poetry run poe validate-composition
 poetry run poe analyze-composition-failures
+# A2 model-comparison (notebook 4/5 replacement)
+poetry run poe model-comparison-analysis --edge-type CtD --skip-plots --max-all-pairs 300000
+poetry run poe model-testing-summary --edge-type CtD --skip-plots
 # Figures / phases as needed
 ```
 
@@ -128,4 +164,5 @@ poetry run poe analyze-composition-failures
 - Data present (hetmat + permutations)
 - Empirical edge frequencies generated
 - Null/compositional models trained
+- A2 model-comparison outputs generated (`model-comparison-analysis` + `model-testing-summary`)
 - Figures/phase scripts executed as needed

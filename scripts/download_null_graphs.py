@@ -51,7 +51,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Only download the zip file; skip extraction.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    validate_args(args)
+    return args
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    if not args.url or not args.url.startswith(("http://", "https://")):
+        raise ValueError("--url must start with http:// or https://")
+    if not args.zip_filename:
+        raise ValueError("--zip-filename cannot be empty")
+    if not args.extract_dir_name:
+        raise ValueError("--extract-dir-name cannot be empty")
 
 
 def main() -> int:
