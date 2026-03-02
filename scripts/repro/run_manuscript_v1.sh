@@ -10,5 +10,4 @@ poe repro-fig4-permutation-similarity
 poe repro-fig13-variance-pmi
 poe repro-fig14-topology-outliers
 poe repro-table1-count-prediction
-poe repro-fig15-model-failures
 poe repro-fig16-zscore-qq

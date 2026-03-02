@@ -93,7 +93,7 @@ repro-fig4-permutation-similarity = "${CAPP_PY} scripts/repro/repro_fig4_permuta
 repro-fig13-variance-pmi = "${CAPP_PY} scripts/repro/repro_fig13_variance_pmi.py"
 repro-fig14-topology-outliers = "${CAPP_PY} scripts/repro/repro_fig14_topology_outliers.py"
 repro-table1-count-prediction = "${CAPP_PY} scripts/repro/repro_table1_count_prediction.py"
-repro-fig15-model-failures = "${CAPP_PY} scripts/repro/repro_fig15_model_failures.py"
+repro-fig15-model-failures = "${CAPP_PY} scripts/repro/repro_fig3_model_failures.py"
 repro-fig16-zscore-qq = "${CAPP_PY} scripts/repro/repro_fig16_zscore_qq.py"
 repro-manuscript-v1 = "bash scripts/repro/run_manuscript_v1.sh"
 
@@ -161,7 +161,6 @@ sequence = [
   "repro-fig13-variance-pmi",
   "repro-fig14-topology-outliers",
   "repro-table1-count-prediction",
-  "repro-fig15-model-failures",
   "repro-fig16-zscore-qq",
 ]
 
