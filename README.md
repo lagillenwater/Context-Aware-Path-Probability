@@ -2,6 +2,16 @@
 
 Reproducible pipelines for null-distribution and path-probability experiments on biomedical knowledge graphs (Hetionet permutations and related metapaths). This README is the single source for running everything end-to-end via Poe tasks.
 
+## Environment (Canonical)
+
+```bash
+# from repo root
+cd environments
+conda env create -f environment.yml    # first time only
+conda activate CAPP
+cd ..                                   # back to repo root
+```
+
 ## Figure Reproduction Commands (Start Here)
 ```bash
 # Quick end-to-end validation (smoke-scale figures + model/comparison suite)
@@ -21,61 +31,6 @@ conda run -n CAPP poe reproduce-figures-full
 conda run -n CAPP poe ci-smoke
 ```
 
-## Manuscript Figure Reproduction (Current Script-Backed Set)
-
-This is the canonical, script-backed set currently implemented for manuscript draft reproduction.
-
-Prerequisites:
-- Run from repo root with `CAPP` active.
-- Ensure permutations exist under `data/permutations/` (for manuscript-faithful runs, keep `000-020` available).
-
-Run all currently implemented manuscript repro tasks:
-```bash
-poe repro-script-backed
-```
-
-Run in manuscript order (script-backed subset):
-```bash
-poe repro-manuscript-v1
-```
-
-Individual commands and outputs:
-- Figure 2 (`CbGpPWpG` heatmap):
-  - Command: `poe repro-fig2-pathcount-heatmap`
-  - Output: `results/path_count_visualization/CbGpPWpG_path_count_heatmap.png`
-- Figure 3 (model failures):
-  - Command: `poe repro-fig3-model-failures`
-  - Output: `results/model_failures/model_failure_analysis.png`
-- Figure 4 (permutation similarity):
-  - Command: `poe repro-fig4-permutation-similarity`
-  - Output: `results/permuations_similarlity/AeG_permutation_similarity.png`
-- Figure 13 (variance vs PMI):
-  - Command: `poe repro-fig13-variance-pmi`
-  - Output dir: `results/variance_pmi/`
-- Figure 14 (perm0 vs perm-mean topology outliers):
-  - Command: `poe repro-fig14-topology-outliers`
-  - Output dir: `results/topology_specific_outliers/`
-- Table 1 (count prediction performance):
-  - Command: `poe repro-table1-count-prediction`
-  - Output: `results/model_comparison/table1_count_prediction.csv`
-- Figure 15:
-  - Command: `poe repro-fig3-model-failures` (same backend/output as Figure 3)
-  - Output: `results/model_failures/model_failure_analysis.png`
-- Figure 16 (z-score + QQ calibration):
-  - Command: `poe repro-fig16-zscore-qq`
-  - Output dir: `results/model_comparison/qq_and_zscore/`
-
-## Environment (Canonical)
-
-Track A now assumes a single runtime path: `conda` environment `CAPP` plus `poe` tasks.
-
-```bash
-# from repo root
-cd environments
-conda env create -f environment.yml    # first time only
-conda activate CAPP
-cd ..                                   # back to repo root
-```
 
 Run tasks with either:
 - `poe <task-name>` (inside active `CAPP`)
@@ -173,7 +128,7 @@ poe <task-name>     # run a task
   - Quick sample:
     - `poe model-testing-summary --edge-type CtD --skip-plots`
 
-### A2 script-first notebook workflows
+### script-first notebook workflows
 
 1. `pathway-data-preparation` (notebook 18a replacement)
   - Builds degree-binned training data for pathway-NN benchmarks.
@@ -325,10 +280,8 @@ poe compose-null
 poe build-metapath-nulls
 poe validate-composition
 poe analyze-composition-failures
-# A2 model-comparison (notebook 4/5 replacement)
 poe model-comparison-analysis --edge-type CtD --skip-plots --max-all-pairs 300000
 poe model-testing-summary --edge-type CtD --skip-plots
-# A2 migrated notebook workflows (examples)
 poe pathway-data-preparation --metapath CbGpPW
 poe pathway-train-random --metapath CbGpPW
 poe pathway-train-degree-product --metapath CbGpPW
@@ -344,16 +297,55 @@ poe nn-architecture-exploration --tests 1,2 --max-samples 5000 --max-epochs-line
 # Figures / model-comparison analyses as needed
 ```
 
+
+## Manuscript Figure Reproduction 
+This is the canonical, script-backed set currently implemented for manuscript draft reproduction.
+
+Prerequisites:
+- Run from repo root with `CAPP` active.
+- Ensure permutations exist under `data/permutations/` (for manuscript-faithful runs, keep `000-020` available).
+
+Run all currently implemented manuscript repro tasks:
+```bash
+poe repro-script-backed
+```
+
+Run in manuscript order (script-backed subset):
+```bash
+poe repro-manuscript-v1
+```
+
+Individual commands and outputs:
+- Figure 2 (`CbGpPWpG` heatmap):
+  - Command: `poe repro-fig2-pathcount-heatmap`
+  - Output: `results/path_count_visualization/CbGpPWpG_path_count_heatmap.png`
+- Figure 3 (model failures):
+  - Command: `poe repro-fig3-model-failures`
+  - Output: `results/model_failures/model_failure_analysis.png`
+- Figure 4 (permutation similarity):
+  - Command: `poe repro-fig4-permutation-similarity`
+  - Output: `results/permuations_similarlity/AeG_permutation_similarity.png`
+- Figure 13 (variance vs PMI):
+  - Command: `poe repro-fig13-variance-pmi`
+  - Output dir: `results/variance_pmi/`
+- Figure 14 (perm0 vs perm-mean topology outliers):
+  - Command: `poe repro-fig14-topology-outliers`
+  - Output dir: `results/topology_specific_outliers/`
+- Table 1 (count prediction performance):
+  - Command: `poe repro-table1-count-prediction`
+  - Output: `results/model_comparison/table1_count_prediction.csv`
+- Figure 15:
+  - Command: `poe repro-fig3-model-failures` (same backend/output as Figure 3)
+  - Output: `results/model_failures/model_failure_analysis.png`
+- Figure 16 (z-score + QQ calibration):
+  - Command: `poe repro-fig16-zscore-qq`
+  - Output dir: `results/model_comparison/qq_and_zscore/`
+
 ## Notes
 - Heavy tasks may require HPC resources; adjust scripts accordingly.
 - Superseded shell wrappers are archived under `archive/scripts_legacy/`.
 - Legacy docs have been moved to `archive/docs/` and will be deleted once reproducibility is confirmed.
 - PYTHONPATH is set by poe tasks to include repo root for `src/` imports.
 
-## Checklist (top-level)
-- Data present (hetmat + permutations)
-- Empirical edge frequencies generated
-- Null/compositional models trained
-- A2 model-comparison outputs generated (`model-comparison-analysis` + `model-testing-summary`)
-- A2 script-first notebook outputs generated (`pathway-data-preparation`, `pathway-train-random`, `pathway-train-degree-product`, `pathway-train-negbin-glm`, `pathway-train-random-forest`, `pathway-train-degree-signature-nn`, `pathway-variance-estimation`, `pathway-anomaly-detection`, `learned-analytical`, `degree-conditioned-compositionality`, `degree-aware-compositional-model`, `nn-architecture-exploration`)
-- Figures/model-comparison scripts executed as needed
+# AI Assistance
+This project utilized the AI assistants Claude and ChatGPT, developed by Anthropic and OpenAI, during the development process. Its assistance included generating initial code snippets and improving documentation. All AI-generated content was reviewed, tested, and validated by human developers.
