@@ -1,0 +1,169 @@
+[tool.poetry]
+name = "context-aware-path-probability"
+version = "0.1.0"
+description = "Reproducible pipelines for null distribution and path probability experiments"
+authors = ["Context Team <dev@context.local>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^2.1.3"
+pandas = "^2.3.2"
+scipy = "^1.15.3"
+matplotlib = "^3.10.5"
+seaborn = "^0.13.2"
+scikit-learn = "^1.7.1"
+torch = "^2.6.0"
+networkx = "^3.4.2"
+tqdm = "^4.67.1"
+hetnetpy = "^0.3.1"
+hetmatpy = "^0.1.0"
+
+[tool.poetry.group.dev.dependencies]
+poethepoet = "^0.25.0"
+
+[tool.poe.env]
+PYTHONPATH = "${PYTHONPATH}:${POE_PROJECT_ROOT}"
+# Use the active environment's python by default; override CAPP_PY if needed.
+CAPP_PY = "python"
+XDG_CACHE_HOME = ".cache"
+MPLCONFIGDIR = ".cache/matplotlib"
+
+[tool.poe.tasks]
+fetch-hetmat = "${CAPP_PY} scripts/build_hetmat.py"
+generate-permutations = "${CAPP_PY} scripts/generate_permutations.py"
+download-permutations = "${CAPP_PY} scripts/download_null_graphs.py"
+compute-edge-frequencies = "${CAPP_PY} scripts/compute_edge_frequencies.py"
+train-null-models = "${CAPP_PY} scripts/train_null_models.py"
+compose-null = "${CAPP_PY} scripts/compose_null.py"
+build-metapath-nulls = "${CAPP_PY} scripts/build_metapath_nulls.py"
+validate-composition = "${CAPP_PY} scripts/validate_composition.py"
+analyze-composition-failures = "${CAPP_PY} scripts/analyze_composition_failures.py"
+model-comparison-analysis = "${CAPP_PY} scripts/model_comparison_analysis.py"
+model-testing-summary = "${CAPP_PY} scripts/model_testing_summary.py"
+learned-analytical = "${CAPP_PY} scripts/learned_analytical_formula.py"
+degree-conditioned-compositionality = "${CAPP_PY} scripts/degree_conditioned_compositionality.py"
+degree-aware-compositional-model = "${CAPP_PY} scripts/degree_aware_compositional_model.py"
+nn-architecture-exploration = "${CAPP_PY} scripts/nn_architecture_exploration.py"
+pathway-data-preparation = "${CAPP_PY} scripts/pathway_data_preparation.py"
+pathway-train-random = "${CAPP_PY} scripts/pathway_train_random.py"
+pathway-train-degree-product = "${CAPP_PY} scripts/pathway_train_degree_product.py"
+pathway-train-negbin-glm = "${CAPP_PY} scripts/pathway_train_negbin_glm.py"
+pathway-train-random-forest = "${CAPP_PY} scripts/pathway_train_random_forest.py"
+pathway-train-degree-signature-nn = "${CAPP_PY} scripts/pathway_train_degree_signature_nn.py"
+pathway-variance-estimation = "${CAPP_PY} scripts/pathway_variance_estimation.py"
+pathway-anomaly-detection = "${CAPP_PY} scripts/pathway_anomaly_detection.py"
+make-pathcount-heatmaps = "${CAPP_PY} test_src/create_path_count_heatmap.py"
+assess-length-effects = "${CAPP_PY} test_src/test_length_degradation.py"
+assess-sparsity = "${CAPP_PY} test_src/analyze_exp2g_sparsity_effect.py"
+assess-topology = "${CAPP_PY} test_src/test_topology_specific_outliers.py"
+baseline-pair-level = "${CAPP_PY} test_src/baseline_pair_level.py"
+pair-level-degree-correction = "${CAPP_PY} test_src/pair_level_degree_correction.py"
+feature-comparison = "${CAPP_PY} test_src/feature_comparison.py"
+control-experiments = "${CAPP_PY} test_src/control_experiments.py"
+linear-model-cv = "${CAPP_PY} test_src/linear_model_cv.py"
+degree-aware-correction-eval = "${CAPP_PY} test_src/degree_aware_correction_eval.py"
+bias-diagnostics = "${CAPP_PY} test_src/bias_diagnostics.py"
+theoretical-correction-eval = "${CAPP_PY} test_src/theoretical_correction_eval.py"
+regularization-study = "${CAPP_PY} test_src/regularization_study.py"
+gnn-variant-comparison = "${CAPP_PY} test_src/gnn_variant_comparison.py CbGpPW"
+focused-composition-tests = "${CAPP_PY} test_src/focused_composition_tests.py"
+perm000-vs-permuted-comparison = "${CAPP_PY} test_src/perm000_vs_permuted_comparison.py"
+validate-dwpc = "${CAPP_PY} scripts/23_dwpc_pvalue_validation.py"
+smoke-pathcount-heatmaps = "${CAPP_PY} test_src/create_path_count_heatmap.py --smoke"
+smoke-length-effects = "${CAPP_PY} test_src/test_length_degradation.py --smoke --skip-plots"
+smoke-sparsity = "${CAPP_PY} test_src/analyze_exp2g_sparsity_effect.py --smoke --skip-plots"
+smoke-topology = "${CAPP_PY} test_src/test_topology_specific_outliers.py --smoke --skip-plots"
+smoke-perm000-vs-permuted-comparison = "${CAPP_PY} test_src/perm000_vs_permuted_comparison.py --smoke --skip-plots"
+quick-baseline-pair-level = "${CAPP_PY} test_src/baseline_pair_level.py --n-samples 20000 --n-permutations 3"
+quick-pair-level-degree-correction = "${CAPP_PY} test_src/pair_level_degree_correction.py --smoke --skip-plots"
+quick-feature-comparison = "${CAPP_PY} test_src/feature_comparison.py --perm-start 0 --perm-end 4 --epochs 50"
+quick-control-experiments = "${CAPP_PY} test_src/control_experiments.py --perm-start 0 --perm-end 4 --epochs 300"
+quick-linear-model-cv = "${CAPP_PY} test_src/linear_model_cv.py --perm-start 0 --perm-end 4"
+quick-degree-aware-correction-eval = "${CAPP_PY} test_src/degree_aware_correction_eval.py --perm-start 1 --perm-end 4"
+quick-bias-diagnostics = "${CAPP_PY} test_src/bias_diagnostics.py --perm-start 0 --perm-end 4"
+quick-theoretical-correction-eval = "${CAPP_PY} test_src/theoretical_correction_eval.py --perm-start 0 --perm-end 4"
+quick-regularization-study = "${CAPP_PY} test_src/regularization_study.py --perm-start 0 --perm-end 4"
+quick-gnn-variant-comparison = "${CAPP_PY} test_src/gnn_variant_comparison.py CbGpPW --smoke"
+quick-focused-composition-tests = "${CAPP_PY} test_src/focused_composition_tests.py --smoke --skip-plots"
+repro-fig2-pathcount-heatmap = "${CAPP_PY} scripts/repro/repro_fig2_pathcount_heatmap.py"
+repro-fig3-model-failures = "${CAPP_PY} scripts/repro/repro_fig3_model_failures.py"
+repro-fig4-permutation-similarity = "${CAPP_PY} scripts/repro/repro_fig4_permutation_similarity.py"
+repro-fig13-variance-pmi = "${CAPP_PY} scripts/repro/repro_fig13_variance_pmi.py"
+repro-fig14-topology-outliers = "${CAPP_PY} scripts/repro/repro_fig14_topology_outliers.py"
+repro-table1-count-prediction = "${CAPP_PY} scripts/repro/repro_table1_count_prediction.py"
+repro-fig15-model-failures = "${CAPP_PY} scripts/repro/repro_fig3_model_failures.py"
+repro-fig16-zscore-qq = "${CAPP_PY} scripts/repro/repro_fig16_zscore_qq.py"
+repro-manuscript-v1 = "bash scripts/repro/run_manuscript_v1.sh"
+
+[tool.poe.tasks.smoke-figures]
+sequence = [
+  "smoke-pathcount-heatmaps",
+  "smoke-length-effects",
+  "smoke-sparsity",
+  "smoke-topology",
+]
+
+[tool.poe.tasks.validate-figures]
+sequence = [
+  "smoke-figures",
+  "smoke-perm000-vs-permuted-comparison",
+]
+
+[tool.poe.tasks.ci-smoke]
+sequence = [
+  "validate-figures",
+  "quick-baseline-pair-level",
+]
+
+[tool.poe.tasks.quick-test-end-to-end]
+sequence = [
+  "validate-figures",
+  "quick-baseline-pair-level",
+  "quick-pair-level-degree-correction",
+  "quick-feature-comparison",
+  "quick-control-experiments",
+  "quick-linear-model-cv",
+  "quick-degree-aware-correction-eval",
+  "quick-bias-diagnostics",
+  "quick-theoretical-correction-eval",
+  "quick-regularization-study",
+  "quick-gnn-variant-comparison",
+  "quick-focused-composition-tests",
+]
+
+[tool.poe.tasks.reproduce-figures-full]
+sequence = [
+  "make-pathcount-heatmaps",
+  "assess-length-effects",
+  "assess-sparsity",
+  "assess-topology",
+  "perm000-vs-permuted-comparison",
+  "baseline-pair-level",
+  "pair-level-degree-correction",
+  "feature-comparison",
+  "control-experiments",
+  "linear-model-cv",
+  "degree-aware-correction-eval",
+  "bias-diagnostics",
+  "theoretical-correction-eval",
+  "regularization-study",
+  "gnn-variant-comparison",
+  "focused-composition-tests",
+]
+
+[tool.poe.tasks.repro-script-backed]
+sequence = [
+  "repro-fig2-pathcount-heatmap",
+  "repro-fig3-model-failures",
+  "repro-fig4-permutation-similarity",
+  "repro-fig13-variance-pmi",
+  "repro-fig14-topology-outliers",
+  "repro-table1-count-prediction",
+  "repro-fig16-zscore-qq",
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -954,6 +954,36 @@ class ModelEvaluator:
         return df
 
 
+def evaluate_model(y_true: np.ndarray, y_pred: np.ndarray, model_name: str) -> Dict[str, Any]:
+    """
+    Compute classification evaluation metrics for a single model.
+
+    Simple evaluation function for binary classification tasks.
+    Used in notebook 21 optimizer comparison experiments.
+
+    Args:
+        y_true: True binary labels
+        y_pred: Predicted probabilities
+        model_name: Name of the model for display
+
+    Returns:
+        Dictionary containing:
+            - model: Model name
+            - auc: ROC-AUC score
+            - average_precision: Average precision score
+    """
+    auc = roc_auc_score(y_true, y_pred)
+    ap = average_precision_score(y_true, y_pred)
+
+    metrics = {
+        'model': model_name,
+        'auc': auc,
+        'average_precision': ap
+    }
+
+    return metrics
+
+
 def get_best_models(evaluation_results: Dict[str, Dict[str, Any]],
                    metrics: List[str] = None) -> Dict[str, str]:
     """

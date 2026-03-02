@@ -1809,9 +1809,15 @@ class LearnedAnalyticalFormula:
         ]
 
         # Save detailed metrics
-        metrics_file = results_dir / f'degree_based_error_metrics_{graph_name}.csv'
+        metrics_file = results_dir / f'{graph_name}_degree_error_metrics.csv'
         degree_error_metrics.to_csv(metrics_file)
         print(f"Degree-based error metrics saved to: {metrics_file}")
+
+        # Remove legacy filename to keep a single canonical output artifact.
+        legacy_metrics_file = results_dir / f'degree_based_error_metrics_{graph_name}.csv'
+        if legacy_metrics_file.exists() and legacy_metrics_file != metrics_file:
+            legacy_metrics_file.unlink()
+            print(f"Removed legacy metrics file: {legacy_metrics_file}")
 
         # Print enhanced summary statistics
         print(f"\n{'='*80}")

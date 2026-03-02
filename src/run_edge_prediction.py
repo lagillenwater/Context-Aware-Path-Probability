@@ -38,13 +38,13 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 
 # Import local modules
-from models import EdgePredictionNN, get_model_info
-from data_processing import (
+from .models import EdgePredictionNN, get_model_info
+from .data_processing import (
     prepare_edge_prediction_data,
     load_permutation_data,
 )
-from training import train_edge_prediction_model
-from visualization import create_probability_heatmap
+from .training import train_edge_prediction_model
+from .visualization import create_probability_heatmap
 
 
 class EdgePredictionRunner:
