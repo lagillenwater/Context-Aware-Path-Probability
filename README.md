@@ -1,44 +1,43 @@
 # Context-Aware-Path-Probability
 
-Reproducible pipelines for null-distribution and path-probability experiments on biomedical knowledge graphs (Hetionet permutations and related metapaths). This README is the single source for running everything end-to-end via Poetry + Poethepoet.
+Reproducible pipelines for null-distribution and path-probability experiments on biomedical knowledge graphs (Hetionet permutations and related metapaths). This README is the single source for running everything end-to-end via Poe tasks.
 
 ## Figure Reproduction Commands (Start Here)
 ```bash
 # Quick end-to-end validation (smoke-scale figures + model/comparison suite)
-poetry run poe quick-test-end-to-end
+poe quick-test-end-to-end
 
 # Full figure/diagnostic reproduction suite
-poetry run poe reproduce-figures-full
+poe reproduce-figures-full
+
+# CI-oriented smoke command (figures + one model/comparison smoke target)
+poe ci-smoke
 ```
 
 If using conda directly:
 ```bash
 conda run -n CAPP poe quick-test-end-to-end
 conda run -n CAPP poe reproduce-figures-full
+conda run -n CAPP poe ci-smoke
 ```
 
-## Environments
+## Environment (Canonical)
 
-You can use either Poetry or the existing conda environment. Pick one and stick with it for a session.
+Track A now assumes a single runtime path: `conda` environment `CAPP` plus `poe` tasks.
 
-- **Conda (recommended on this repo)**
-  ```bash
-  # from repo root
-  cd environments
-  conda env create -f environment.yml    # first time only
-  conda activate CAPP
-  cd ..                                   # back to repo root
-  ```
+```bash
+# from repo root
+cd environments
+conda env create -f environment.yml    # first time only
+conda activate CAPP
+cd ..                                   # back to repo root
+```
 
-- **Poetry (alternative; useful for poe tasks)**
-  ```bash
-  curl -sSL https://install.python-poetry.org | python3 -   # if poetry not installed
-  poetry install
-  # activate a shell with the venv
-  poetry shell
-  ```
+Run tasks with either:
+- `poe <task-name>` (inside active `CAPP`)
+- `conda run -n CAPP poe <task-name>` (without activation)
 
-> Tip: If you use conda, the `poe` runner is available via `conda run -n CAPP poe ...` or after `conda activate CAPP` if poethepoet is installed in that env.
+Poetry remains supported for dependency management, but canonical task execution is `conda + poe`.
 
 ## Data prerequisites
 - Hetionet hetmat and generated permutations expected under `data/`:
@@ -65,8 +64,8 @@ Use-cases:
 ## Task runner
 All pipelines are encoded as Poethepoet tasks. Run from repo root:
 ```bash
-poetry run poe --help          # list tasks
-poetry run poe <task-name>     # run a task
+poe --help          # list tasks
+poe <task-name>     # run a task
 ```
 
 ### Core data + null pipeline
@@ -268,40 +267,42 @@ poetry run poe <task-name>     # run a task
 - `validate-dwpc` – DWPC p-value validation suite
 - `smoke-figures` – sequence task that runs smoke checks for all four figure/diagnostic scripts
 - `validate-figures` – runs `smoke-figures` plus `perm000-vs-permuted-comparison --smoke --skip-plots`
+- `ci-smoke` – CI-oriented smoke sequence (`validate-figures` + `quick-baseline-pair-level`)
 - `quick-test-end-to-end` – smoke-scale end-to-end run across figures + model/comparison suite + focused composition
 - `reproduce-figures-full` – full figure/diagnostic/model-comparison reproduction suite
 
 ## Suggested end-to-end run
 ```bash
-poetry run poe fetch-hetmat
-poetry run poe generate-permutations   # or download-permutations
-poetry run poe compute-edge-frequencies
-poetry run poe train-null-models
-poetry run poe compose-null
-poetry run poe build-metapath-nulls
-poetry run poe validate-composition
-poetry run poe analyze-composition-failures
+poe fetch-hetmat
+poe generate-permutations   # or download-permutations
+poe compute-edge-frequencies
+poe train-null-models
+poe compose-null
+poe build-metapath-nulls
+poe validate-composition
+poe analyze-composition-failures
 # A2 model-comparison (notebook 4/5 replacement)
-poetry run poe model-comparison-analysis --edge-type CtD --skip-plots --max-all-pairs 300000
-poetry run poe model-testing-summary --edge-type CtD --skip-plots
+poe model-comparison-analysis --edge-type CtD --skip-plots --max-all-pairs 300000
+poe model-testing-summary --edge-type CtD --skip-plots
 # A2 migrated notebook workflows (examples)
-poetry run poe pathway-data-preparation --metapath CbGpPW
-poetry run poe pathway-train-random --metapath CbGpPW
-poetry run poe pathway-train-degree-product --metapath CbGpPW
-poetry run poe pathway-train-negbin-glm --metapath CbGpPW
-poetry run poe pathway-train-random-forest --metapath CbGpPW
-poetry run poe pathway-train-degree-signature-nn --metapath CbGpPW --skip-plots
-poetry run poe pathway-variance-estimation --metapath CbGpPW --n-permutations 2 --skip-plots
-poetry run poe pathway-anomaly-detection --metapath CbGpPW --max-pairs 5000 --skip-plots
-poetry run poe learned-analytical --edge-type CtD --n-candidates 2 3 5 --skip-comparison-plot
-poetry run poe degree-conditioned-compositionality --metapath CbGpPW --perm-start 1 --perm-end 2 --max-pairs 5000 --skip-plots
-poetry run poe degree-aware-compositional-model --metapath CbGpPW --perm-start 1 --perm-end 2 --max-pairs 5000 --skip-plots
-poetry run poe nn-architecture-exploration --tests 1,2 --max-samples 5000 --max-epochs-linear 5 --patience-linear 3 --skip-plots --no-save-pkl
+poe pathway-data-preparation --metapath CbGpPW
+poe pathway-train-random --metapath CbGpPW
+poe pathway-train-degree-product --metapath CbGpPW
+poe pathway-train-negbin-glm --metapath CbGpPW
+poe pathway-train-random-forest --metapath CbGpPW
+poe pathway-train-degree-signature-nn --metapath CbGpPW --skip-plots
+poe pathway-variance-estimation --metapath CbGpPW --n-permutations 2 --skip-plots
+poe pathway-anomaly-detection --metapath CbGpPW --max-pairs 5000 --skip-plots
+poe learned-analytical --edge-type CtD --n-candidates 2 3 5 --skip-comparison-plot
+poe degree-conditioned-compositionality --metapath CbGpPW --perm-start 1 --perm-end 2 --max-pairs 5000 --skip-plots
+poe degree-aware-compositional-model --metapath CbGpPW --perm-start 1 --perm-end 2 --max-pairs 5000 --skip-plots
+poe nn-architecture-exploration --tests 1,2 --max-samples 5000 --max-epochs-linear 5 --patience-linear 3 --skip-plots --no-save-pkl
 # Figures / model-comparison analyses as needed
 ```
 
 ## Notes
 - Heavy tasks may require HPC resources; adjust scripts accordingly.
+- Superseded shell wrappers are archived under `archive/scripts_legacy/`.
 - Legacy docs have been moved to `archive/docs/` and will be deleted once reproducibility is confirmed.
 - PYTHONPATH is set by poe tasks to include repo root for `src/` imports.
 

@@ -102,6 +102,12 @@ sequence = [
   "smoke-perm000-vs-permuted-comparison",
 ]
 
+[tool.poe.tasks.ci-smoke]
+sequence = [
+  "validate-figures",
+  "quick-baseline-pair-level",
+]
+
 [tool.poe.tasks.quick-test-end-to-end]
 sequence = [
   "validate-figures",
