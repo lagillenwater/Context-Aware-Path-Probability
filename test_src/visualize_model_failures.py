@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 import sys
+import argparse
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 import torch
@@ -140,10 +141,18 @@ def train_heteroscedastic_nn(X, counts_train):
     return model
 
 
-def analyze_failures(edge1_type='CbG', edge2_type='GpPW', n_samples=10000, random_state=42):
+def analyze_failures(
+    edge1_type='CbG',
+    edge2_type='GpPW',
+    n_samples=10000,
+    random_state=42,
+    data_dir=None,
+    output_dir=None,
+    skip_plots=False,
+):
     """Analyze where models fail and relate to topology-specific outliers."""
-    data_dir = repo_dir / 'data'
-    output_dir = repo_dir / 'results' / 'model_failures'
+    data_dir = Path(data_dir) if data_dir is not None else repo_dir / 'data'
+    output_dir = Path(output_dir) if output_dir is not None else repo_dir / 'results' / 'model_failures'
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("="*70)
@@ -271,11 +280,12 @@ def analyze_failures(edge1_type='CbG', edge2_type='GpPW', n_samples=10000, rando
             print(f"    RMSE: {row['rmse']:.3f}")
 
     # Create visualizations
-    create_failure_visualizations(
-        X, mean_train, counts_test, models,
-        consistent_high, topology_specific, never_high,
-        output_dir
-    )
+    if not skip_plots:
+        create_failure_visualizations(
+            X, mean_train, counts_test, models,
+            consistent_high, topology_specific, never_high,
+            output_dir
+        )
 
     # Detailed analysis: Are topology-specific pairs the largest errors?
     print("\n" + "="*70)
@@ -548,9 +558,31 @@ def create_failure_visualizations(X, mean_train, counts_test, models,
 
 
 def main():
-    results_df, summary = analyze_failures()
+    parser = argparse.ArgumentParser(description="Visualize model failures and topology-specific outliers.")
+    parser.add_argument("--edge1-type", type=str, default="CbG")
+    parser.add_argument("--edge2-type", type=str, default="GpPW")
+    parser.add_argument("--data-dir", type=Path, default=repo_dir / "data")
+    parser.add_argument("--results-dir", type=Path, default=repo_dir / "results" / "model_failures")
+    parser.add_argument("--n-samples", type=int, default=10000)
+    parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--skip-plots", action="store_true")
+    args = parser.parse_args()
 
-    output_dir = repo_dir / 'results' / 'model_failures'
+    if args.smoke:
+        args.n_samples = min(args.n_samples, 2000)
+
+    _, summary = analyze_failures(
+        edge1_type=args.edge1_type,
+        edge2_type=args.edge2_type,
+        n_samples=args.n_samples,
+        random_state=args.random_state,
+        data_dir=args.data_dir,
+        output_dir=args.results_dir,
+        skip_plots=args.skip_plots,
+    )
+
+    output_dir = args.results_dir
     summary.to_csv(output_dir / 'error_summary.csv', index=False)
     print(f"\nSaved summary: {output_dir / 'error_summary.csv'}")
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -42,6 +43,13 @@ def run_command(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, check=True, cwd=cwd or repo_root())
 
 
+def run_python(script: Path, args: list[str] | None = None) -> None:
+    cmd = [sys.executable, str(script)]
+    if args:
+        cmd.extend(args)
+    run_command(cmd, cwd=repo_root())
+
+
 def ensure_file_exists(path: Path) -> None:
     if not path.exists() or not path.is_file():
         raise FileNotFoundError(f"Expected file was not created: {path}")
@@ -50,6 +58,16 @@ def ensure_file_exists(path: Path) -> None:
 def ensure_dir_exists(path: Path) -> None:
     if not path.exists() or not path.is_dir():
         raise FileNotFoundError(f"Expected directory was not created: {path}")
+
+
+def ensure_parent(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def copy_file(src: Path, dst: Path) -> None:
+    ensure_file_exists(src)
+    ensure_parent(dst)
+    shutil.copy2(src, dst)
 
 
 def write_run_summary(summary_path: Path, args: Any, extra: dict[str, Any] | None = None) -> None:

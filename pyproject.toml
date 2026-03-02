@@ -87,6 +87,15 @@ quick-theoretical-correction-eval = "${CAPP_PY} test_src/theoretical_correction_
 quick-regularization-study = "${CAPP_PY} test_src/regularization_study.py --perm-start 0 --perm-end 4"
 quick-gnn-variant-comparison = "${CAPP_PY} test_src/gnn_variant_comparison.py CbGpPW --smoke"
 quick-focused-composition-tests = "${CAPP_PY} test_src/focused_composition_tests.py --smoke --skip-plots"
+repro-fig2-pathcount-heatmap = "${CAPP_PY} scripts/repro/repro_fig2_pathcount_heatmap.py"
+repro-fig3-model-failures = "${CAPP_PY} scripts/repro/repro_fig3_model_failures.py"
+repro-fig4-permutation-similarity = "${CAPP_PY} scripts/repro/repro_fig4_permutation_similarity.py"
+repro-fig13-variance-pmi = "${CAPP_PY} scripts/repro/repro_fig13_variance_pmi.py"
+repro-fig14-topology-outliers = "${CAPP_PY} scripts/repro/repro_fig14_topology_outliers.py"
+repro-table1-count-prediction = "${CAPP_PY} scripts/repro/repro_table1_count_prediction.py"
+repro-fig15-model-failures = "${CAPP_PY} scripts/repro/repro_fig15_model_failures.py"
+repro-fig16-zscore-qq = "${CAPP_PY} scripts/repro/repro_fig16_zscore_qq.py"
+repro-manuscript-v1 = "bash scripts/repro/run_manuscript_v1.sh"
 
 [tool.poe.tasks.smoke-figures]
 sequence = [
@@ -142,6 +151,18 @@ sequence = [
   "regularization-study",
   "gnn-variant-comparison",
   "focused-composition-tests",
+]
+
+[tool.poe.tasks.repro-script-backed]
+sequence = [
+  "repro-fig2-pathcount-heatmap",
+  "repro-fig3-model-failures",
+  "repro-fig4-permutation-similarity",
+  "repro-fig13-variance-pmi",
+  "repro-fig14-topology-outliers",
+  "repro-table1-count-prediction",
+  "repro-fig15-model-failures",
+  "repro-fig16-zscore-qq",
 ]
 
 [build-system]
