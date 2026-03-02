@@ -17,6 +17,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-dir", type=Path, default=REPO_DIR / "data")
     parser.add_argument("--results-dir", type=Path, default=REPO_DIR / "results" / "model_failures")
     parser.add_argument("--random-seed", type=int, default=42)
+    parser.add_argument("--train-perms", type=int, nargs="+", default=None)
+    parser.add_argument("--test-perms", type=int, nargs="+", default=None)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--skip-plots", action="store_true")
     return parser.parse_args()
@@ -31,6 +33,10 @@ def main() -> None:
         "--results-dir", str(args.results_dir),
         "--random-state", str(args.random_seed),
     ]
+    if args.train_perms:
+        script_args.extend(["--train-perms", *[str(perm) for perm in args.train_perms]])
+    if args.test_perms:
+        script_args.extend(["--test-perms", *[str(perm) for perm in args.test_perms]])
     if args.smoke:
         script_args.extend(["--smoke", "--n-samples", "2000"])
     if args.skip_plots:

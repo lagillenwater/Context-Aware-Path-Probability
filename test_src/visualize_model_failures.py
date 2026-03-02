@@ -60,6 +60,61 @@ class HeteroscedasticNN(nn.Module):
         return mean, logvar
 
 
+def list_available_permutation_ids(data_dir: Path) -> list[int]:
+    """Return sorted local permutation IDs from data/permutations."""
+    perm_dir = Path(data_dir) / "permutations"
+    if not perm_dir.exists():
+        return []
+    perm_ids = []
+    for child in perm_dir.glob("*.hetmat"):
+        try:
+            perm_ids.append(int(child.stem))
+        except ValueError:
+            continue
+    return sorted(set(perm_ids))
+
+
+def resolve_permutation_split(
+    available: list[int],
+    train_perms: list[int] | None = None,
+    test_perms: list[int] | None = None,
+) -> tuple[list[int], list[int]]:
+    """Resolve train/test permutation IDs with local-availability fallback."""
+    if len(available) < 2:
+        raise ValueError("Need at least 2 permutations for train/test split.")
+
+    if train_perms or test_perms:
+        if not (train_perms and test_perms):
+            raise ValueError("Provide both --train-perms and --test-perms, or neither.")
+        requested = [*train_perms, *test_perms]
+        missing = [perm for perm in requested if perm not in available]
+        if missing:
+            raise FileNotFoundError(f"Requested permutations missing: {sorted(set(missing))}")
+        overlap = set(train_perms) & set(test_perms)
+        if overlap:
+            raise ValueError(f"Train/test permutation overlap is not allowed: {sorted(overlap)}")
+        return train_perms, test_perms
+
+    canonical_train = [0, 1, 2, 3, 4]
+    canonical_test = [15, 16, 17, 18, 19, 20]
+    if all(perm in available for perm in canonical_train + canonical_test):
+        return canonical_train, canonical_test
+
+    # Fallback: split available IDs into early train and late test sets.
+    # Prefer at least 2 test permutations when possible.
+    if len(available) >= 3:
+        train_count = min(5, len(available) - 2)
+    else:
+        train_count = 1
+    train = available[:train_count]
+    remaining = available[train_count:]
+    if not remaining:
+        remaining = available[-1:]
+    test_count = min(6, len(remaining))
+    test = remaining[-test_count:]
+    return train, test
+
+
 def train_best_models(X_train, y_train, counts_train):
     """Train Linear, RF, and Heteroscedastic NN models."""
     print("Training models...")
@@ -149,6 +204,8 @@ def analyze_failures(
     data_dir=None,
     output_dir=None,
     skip_plots=False,
+    train_perms=None,
+    test_perms=None,
 ):
     """Analyze where models fail and relate to topology-specific outliers."""
     data_dir = Path(data_dir) if data_dir is not None else repo_dir / 'data'
@@ -159,18 +216,29 @@ def analyze_failures(
     print("Model Failure Analysis")
     print("="*70)
 
+    available_perms = list_available_permutation_ids(data_dir)
+    train_perms, test_perms = resolve_permutation_split(
+        available=available_perms,
+        train_perms=train_perms,
+        test_perms=test_perms,
+    )
+
     print(f"\nLoading data for {edge1_type}+{edge2_type}...")
-    edge1_perm0, edge2_perm0 = load_permuted_edge_matrices(edge1_type, edge2_type, 0, data_dir)
+    print(f"  Train perms: {train_perms}")
+    print(f"  Test perms:  {test_perms}")
+    edge1_perm0, edge2_perm0 = load_permuted_edge_matrices(
+        edge1_type,
+        edge2_type,
+        train_perms[0],
+        data_dir,
+    )
     pairs = sample_pairs(edge1_perm0, edge2_perm0, n_samples=n_samples, random_state=random_state)
     X = extract_degree_features(pairs, edge1_perm0, edge2_perm0)
 
     print(f"  Sampled {len(pairs)} pairs")
 
-    train_perms = list(range(5))
-    test_perms = list(range(15, 21))
-
     # Compute training counts
-    print("\nComputing training counts (perms 0-4)...")
+    print("\nComputing training counts...")
     counts_train = []
     for perm in train_perms:
         edge1, edge2 = load_permuted_edge_matrices(edge1_type, edge2_type, perm, data_dir)
@@ -196,7 +264,7 @@ def analyze_failures(
     models = train_best_models(X, mean_train, counts_train)
 
     # Compute test counts
-    print("\nComputing test counts (perms 15-20)...")
+    print("\nComputing test counts...")
     counts_test = []
     for perm in test_perms:
         edge1, edge2 = load_permuted_edge_matrices(edge1_type, edge2_type, perm, data_dir)
@@ -282,7 +350,7 @@ def analyze_failures(
     # Create visualizations
     if not skip_plots:
         create_failure_visualizations(
-            X, mean_train, counts_test, models,
+            X, mean_train, counts_train, counts_test, models,
             consistent_high, topology_specific, never_high,
             output_dir
         )
@@ -324,7 +392,7 @@ def analyze_failures(
     return results_df, summary
 
 
-def create_failure_visualizations(X, mean_train, counts_test, models,
+def create_failure_visualizations(X, mean_train, counts_train, counts_test, models,
                                   consistent_high, topology_specific, never_high,
                                   output_dir):
     """Create comprehensive failure visualizations."""
@@ -370,7 +438,7 @@ def create_failure_visualizations(X, mean_train, counts_test, models,
 
     # Plot 3: Variance across training perms
     ax = fig.add_subplot(gs[0, 2])
-    var_train = counts_test.var(axis=1)  # Actually using test for visualization
+    var_train = counts_train.var(axis=1)
     for name, mask in pair_types.items():
         if mask.sum() > 0:
             ax.scatter(deg_product[mask], var_train[mask],
@@ -565,6 +633,8 @@ def main():
     parser.add_argument("--results-dir", type=Path, default=repo_dir / "results" / "model_failures")
     parser.add_argument("--n-samples", type=int, default=10000)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument("--train-perms", type=int, nargs="+", default=None)
+    parser.add_argument("--test-perms", type=int, nargs="+", default=None)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--skip-plots", action="store_true")
     args = parser.parse_args()
@@ -580,6 +650,8 @@ def main():
         data_dir=args.data_dir,
         output_dir=args.results_dir,
         skip_plots=args.skip_plots,
+        train_perms=args.train_perms,
+        test_perms=args.test_perms,
     )
 
     output_dir = args.results_dir
