@@ -17,7 +17,6 @@ scikit-learn = "^1.7.1"
 torch = "^2.6.0"
 networkx = "^3.4.2"
 tqdm = "^4.67.1"
-papermill = "^2.6.0"
 hetnetpy = "^0.3.1"
 hetmatpy = "^0.1.0"
 
@@ -28,6 +27,8 @@ poethepoet = "^0.25.0"
 PYTHONPATH = "${PYTHONPATH}:${POE_PROJECT_ROOT}"
 # Use the active environment's python by default; override CAPP_PY if needed.
 CAPP_PY = "python"
+XDG_CACHE_HOME = ".cache"
+MPLCONFIGDIR = ".cache/matplotlib"
 
 [tool.poe.tasks]
 fetch-hetmat = "${CAPP_PY} scripts/build_hetmat.py"
@@ -53,24 +54,89 @@ pathway-train-random-forest = "${CAPP_PY} scripts/pathway_train_random_forest.py
 pathway-train-degree-signature-nn = "${CAPP_PY} scripts/pathway_train_degree_signature_nn.py"
 pathway-variance-estimation = "${CAPP_PY} scripts/pathway_variance_estimation.py"
 pathway-anomaly-detection = "${CAPP_PY} scripts/pathway_anomaly_detection.py"
-make-pathcount-heatmaps = "python test_src/create_path_count_heatmap.py"
-assess-length-effects = "python test_src/test_length_degradation.py"
-assess-sparsity = "python test_src/analyze_exp2g_sparsity_effect.py"
-assess-topology = "python test_src/test_topology_specific_outliers.py"
-run-phase1 = "python test_src/phase1_baseline_model.py"
-run-phase2 = "python test_src/run_pair_level_phase2.py"
-run-phase3 = "python test_src/test_phase3_feature_comparison.py"
-run-phase4 = "python test_src/test_phase4_control_experiments.py"
-run-phase5 = "python test_src/test_phase5_linear_regression_cv.py"
-run-phase5b-degree-aware = "python test_src/test_phase5b_degree_aware_correction.py"
-run-phase5b-bias = "python test_src/test_phase5b_bias_diagnostics.py"
-run-phase5b-theoretical = "python test_src/test_phase5b_theoretical_correction.py"
-run-phase5c-regularization = "python test_src/test_phase5c_regularization.py"
-run-gnn-variants = "python test_src/test_gnn_pathway_counts.py"
-test-composition-focused = "python test_src/test_focused_composition_exp2g.py"
-compare-perm0 = "python test_src/test_perm000_vs_perms.py"
-validate-dwpc = "python scripts/23_dwpc_pvalue_validation.py"
-smoke-figures = "python test_src/create_path_count_heatmap.py --max-source-deg 5 --max-target-deg 10"
+make-pathcount-heatmaps = "${CAPP_PY} test_src/create_path_count_heatmap.py"
+assess-length-effects = "${CAPP_PY} test_src/test_length_degradation.py"
+assess-sparsity = "${CAPP_PY} test_src/analyze_exp2g_sparsity_effect.py"
+assess-topology = "${CAPP_PY} test_src/test_topology_specific_outliers.py"
+baseline-pair-level = "${CAPP_PY} test_src/baseline_pair_level.py"
+pair-level-degree-correction = "${CAPP_PY} test_src/pair_level_degree_correction.py"
+feature-comparison = "${CAPP_PY} test_src/feature_comparison.py"
+control-experiments = "${CAPP_PY} test_src/control_experiments.py"
+linear-model-cv = "${CAPP_PY} test_src/linear_model_cv.py"
+degree-aware-correction-eval = "${CAPP_PY} test_src/degree_aware_correction_eval.py"
+bias-diagnostics = "${CAPP_PY} test_src/bias_diagnostics.py"
+theoretical-correction-eval = "${CAPP_PY} test_src/theoretical_correction_eval.py"
+regularization-study = "${CAPP_PY} test_src/regularization_study.py"
+gnn-variant-comparison = "${CAPP_PY} test_src/gnn_variant_comparison.py CbGpPW"
+focused-composition-tests = "${CAPP_PY} test_src/focused_composition_tests.py"
+perm000-vs-permuted-comparison = "${CAPP_PY} test_src/perm000_vs_permuted_comparison.py"
+validate-dwpc = "${CAPP_PY} scripts/23_dwpc_pvalue_validation.py"
+smoke-pathcount-heatmaps = "${CAPP_PY} test_src/create_path_count_heatmap.py --smoke"
+smoke-length-effects = "${CAPP_PY} test_src/test_length_degradation.py --smoke --skip-plots"
+smoke-sparsity = "${CAPP_PY} test_src/analyze_exp2g_sparsity_effect.py --smoke --skip-plots"
+smoke-topology = "${CAPP_PY} test_src/test_topology_specific_outliers.py --smoke --skip-plots"
+smoke-perm000-vs-permuted-comparison = "${CAPP_PY} test_src/perm000_vs_permuted_comparison.py --smoke --skip-plots"
+quick-baseline-pair-level = "${CAPP_PY} test_src/baseline_pair_level.py --n-samples 20000 --n-permutations 3"
+quick-pair-level-degree-correction = "${CAPP_PY} test_src/pair_level_degree_correction.py --smoke --skip-plots"
+quick-feature-comparison = "${CAPP_PY} test_src/feature_comparison.py --perm-start 0 --perm-end 4 --epochs 50"
+quick-control-experiments = "${CAPP_PY} test_src/control_experiments.py --perm-start 0 --perm-end 4 --epochs 300"
+quick-linear-model-cv = "${CAPP_PY} test_src/linear_model_cv.py --perm-start 0 --perm-end 4"
+quick-degree-aware-correction-eval = "${CAPP_PY} test_src/degree_aware_correction_eval.py --perm-start 1 --perm-end 4"
+quick-bias-diagnostics = "${CAPP_PY} test_src/bias_diagnostics.py --perm-start 0 --perm-end 4"
+quick-theoretical-correction-eval = "${CAPP_PY} test_src/theoretical_correction_eval.py --perm-start 0 --perm-end 4"
+quick-regularization-study = "${CAPP_PY} test_src/regularization_study.py --perm-start 0 --perm-end 4"
+quick-gnn-variant-comparison = "${CAPP_PY} test_src/gnn_variant_comparison.py CbGpPW --smoke"
+quick-focused-composition-tests = "${CAPP_PY} test_src/focused_composition_tests.py --smoke --skip-plots"
+
+[tool.poe.tasks.smoke-figures]
+sequence = [
+  "smoke-pathcount-heatmaps",
+  "smoke-length-effects",
+  "smoke-sparsity",
+  "smoke-topology",
+]
+
+[tool.poe.tasks.validate-figures]
+sequence = [
+  "smoke-figures",
+  "smoke-perm000-vs-permuted-comparison",
+]
+
+[tool.poe.tasks.quick-test-end-to-end]
+sequence = [
+  "validate-figures",
+  "quick-baseline-pair-level",
+  "quick-pair-level-degree-correction",
+  "quick-feature-comparison",
+  "quick-control-experiments",
+  "quick-linear-model-cv",
+  "quick-degree-aware-correction-eval",
+  "quick-bias-diagnostics",
+  "quick-theoretical-correction-eval",
+  "quick-regularization-study",
+  "quick-gnn-variant-comparison",
+  "quick-focused-composition-tests",
+]
+
+[tool.poe.tasks.reproduce-figures-full]
+sequence = [
+  "make-pathcount-heatmaps",
+  "assess-length-effects",
+  "assess-sparsity",
+  "assess-topology",
+  "perm000-vs-permuted-comparison",
+  "baseline-pair-level",
+  "pair-level-degree-correction",
+  "feature-comparison",
+  "control-experiments",
+  "linear-model-cv",
+  "degree-aware-correction-eval",
+  "bias-diagnostics",
+  "theoretical-correction-eval",
+  "regularization-study",
+  "gnn-variant-comparison",
+  "focused-composition-tests",
+]
 
 [build-system]
 requires = ["poetry-core"]

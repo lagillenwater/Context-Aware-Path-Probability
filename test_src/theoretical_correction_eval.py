@@ -1,28 +1,36 @@
 #!/usr/bin/env python3
 """
-Test Phase 5b: Theoretical Correction Formulas.
+Theoretical correction evaluation.
 
 This script tests various theoretically-motivated correction formulas
 to address heteroscedastic bias in pathway count predictions.
 
 Usage:
-    python test_src/test_phase5b_theoretical_correction.py
-    python test_src/test_phase5b_theoretical_correction.py --metapath CtDaG
+    python test_src/theoretical_correction_eval.py
+    python test_src/theoretical_correction_eval.py --metapath CtDaG
 """
 
 import sys
 from pathlib import Path
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 import json
 import argparse
 import pandas as pd
+import os
 from scipy.stats import pearsonr
 from sklearn.linear_model import LinearRegression
 
 repo_dir = Path(__file__).parent.parent
+cache_dir = repo_dir / '.cache'
+mpl_cache_dir = cache_dir / 'matplotlib'
+mpl_cache_dir.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault('XDG_CACHE_HOME', str(cache_dir))
+os.environ.setdefault('MPLCONFIGDIR', str(mpl_cache_dir))
 sys.path.insert(0, str(repo_dir / 'src'))
+sys.path.insert(0, str(repo_dir / 'src' / 'archive'))
+
+import matplotlib.pyplot as plt
 
 from pathway_features_v2 import extract_features_from_original
 from pathway_evaluation_v2 import validate_on_permutations
@@ -127,10 +135,10 @@ def plot_correction_comparison(results_df, output_file):
 
 def main():
     """
-    Main Phase 5b theoretical correction function.
+    Main theoretical-correction-eval function.
     """
     parser = argparse.ArgumentParser(
-        description='Phase 5b: Theoretical Correction Formulas'
+        description='Theoretical correction evaluation'
     )
     parser.add_argument(
         '--metapath',
@@ -163,7 +171,7 @@ def main():
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
-    print("Phase 5b: Theoretical Correction Formulas")
+    print("Theoretical Correction Evaluation")
     print("=" * 80)
     print(f"Metapath: {args.metapath}")
     print(f"Bins: {args.n_bins} x {args.n_bins}")
@@ -439,7 +447,7 @@ def main():
     print()
 
     print("=" * 80)
-    print("Phase 5b theoretical correction complete!")
+    print("Theoretical correction evaluation complete!")
     print("=" * 80)
 
     return 0

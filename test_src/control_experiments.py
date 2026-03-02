@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Test Phase 4: Control Experiments.
+Control experiments.
 
 This script compares the optimized DegreeSignatureNN model (Feature Set E,
 10x10 bins) against baseline methods to demonstrate improvement.
 
 Usage:
-    python test_src/test_phase4_control_experiments.py
-    python test_src/test_phase4_control_experiments.py --metapath CtDaG
+    python test_src/control_experiments.py
+    python test_src/control_experiments.py --metapath CtDaG
 """
 
 import sys
@@ -300,10 +300,10 @@ def plot_method_comparison(results_df, output_file):
 
 def main():
     """
-    Main Phase 4 function: control experiments.
+    Main control-experiments function.
     """
     parser = argparse.ArgumentParser(
-        description='Phase 4: Control Experiments'
+        description='Control experiments'
     )
     parser.add_argument(
         '--metapath',
@@ -354,7 +354,7 @@ def main():
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
-    print("Phase 4: Control Experiments")
+    print("Control Experiments")
     print("=" * 80)
     print(f"Metapath: {args.metapath}")
     print(f"Bins: {args.n_bins} x {args.n_bins}")
@@ -606,7 +606,7 @@ def main():
     print()
 
     print("=" * 80)
-    print("Phase 4 complete!")
+    print("Control experiments complete!")
     print("=" * 80)
 
     return 0

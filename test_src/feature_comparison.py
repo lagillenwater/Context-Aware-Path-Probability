@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Test Phase 3: Compare feature sets A-F on original graph.
+Feature comparison: compare feature sets A-F on original graph.
 
 This script trains DegreeSignatureNN models with different feature sets
 to determine which features improve performance and reduce underprediction bias.
 
 Usage:
-    python test_src/test_phase3_feature_comparison.py
-    python test_src/test_phase3_feature_comparison.py --metapath CtDaG
-    python test_src/test_phase3_feature_comparison.py --epochs 1000
+    python test_src/feature_comparison.py
+    python test_src/feature_comparison.py --metapath CtDaG
+    python test_src/feature_comparison.py --epochs 1000
 """
 
 import sys
@@ -206,10 +206,10 @@ def plot_feature_set_comparison(results_df, output_file):
 
 def main():
     """
-    Main Phase 3 function: compare feature sets.
+    Main feature-comparison function.
     """
     parser = argparse.ArgumentParser(
-        description='Phase 3: Compare feature sets A-F'
+        description='Feature comparison: compare feature sets A-F'
     )
     parser.add_argument(
         '--metapath',
@@ -261,7 +261,7 @@ def main():
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
-    print("Phase 3: Feature Set Comparison")
+    print("Feature Set Comparison")
     print("=" * 80)
     print(f"Metapath: {args.metapath}")
     print(f"Number of bins: {args.n_bins}")
@@ -460,7 +460,7 @@ def main():
     print()
 
     print("=" * 80)
-    print("Phase 3 complete!")
+    print("Feature comparison complete!")
     print("=" * 80)
 
     return 0

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Test Phase 5b: Bias Pattern Diagnostics.
+Bias diagnostics.
 
 This script analyzes whether prediction bias varies systematically with
 pathway count magnitude (heteroscedasticity) or is constant across the range.
 
 Usage:
-    python test_src/test_phase5b_bias_diagnostics.py
-    python test_src/test_phase5b_bias_diagnostics.py --metapath CtDaG
+    python test_src/bias_diagnostics.py
+    python test_src/bias_diagnostics.py --metapath CtDaG
 """
 
 import sys
@@ -241,10 +241,10 @@ def analyze_bias_pattern(y_true, y_pred):
 
 def main():
     """
-    Main Phase 5b diagnostic function.
+    Main bias-diagnostics function.
     """
     parser = argparse.ArgumentParser(
-        description='Phase 5b: Bias Pattern Diagnostics'
+        description='Bias diagnostics'
     )
     parser.add_argument(
         '--metapath',
@@ -277,7 +277,7 @@ def main():
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
-    print("Phase 5b: Bias Pattern Diagnostics")
+    print("Bias Diagnostics")
     print("=" * 80)
     print(f"Metapath: {args.metapath}")
     print(f"Bins: {args.n_bins} x {args.n_bins}")
@@ -410,7 +410,7 @@ def main():
     print()
 
     print("=" * 80)
-    print("Phase 5b diagnostics complete!")
+    print("Bias diagnostics complete!")
     print("=" * 80)
 
     return 0

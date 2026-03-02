@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Test Phase 5c: Ridge/Lasso Regularization to Address Overfitting.
+Regularization study: ridge/lasso to address overfitting.
 
 This script tests whether regularized linear models (Ridge, Lasso) reduce
-the overfitting observed in Phase 5 CV results (training r = 1.0, perm r = 0.887).
+the overfitting observed in linear-model CV results (training r = 1.0, perm r = 0.887).
 
 Usage:
-    python test_src/test_phase5c_regularization.py
-    python test_src/test_phase5c_regularization.py --metapath CtDaG
+    python test_src/regularization_study.py
+    python test_src/regularization_study.py --metapath CtDaG
 """
 
 import sys
@@ -245,10 +245,10 @@ def plot_regularization_comparison(results_df, output_file):
 
 def main():
     """
-    Main Phase 5c regularization testing function.
+    Main regularization-study function.
     """
     parser = argparse.ArgumentParser(
-        description='Phase 5c: Ridge/Lasso Regularization'
+        description='Regularization study: ridge/lasso'
     )
     parser.add_argument(
         '--metapath',
@@ -281,7 +281,7 @@ def main():
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
-    print("Phase 5c: Ridge/Lasso Regularization to Address Overfitting")
+    print("Regularization Study: Ridge/Lasso for Overfitting")
     print("=" * 80)
     print(f"Metapath: {args.metapath}")
     print(f"Bins: {args.n_bins} x {args.n_bins}")
@@ -391,7 +391,7 @@ def main():
     print()
 
     print("=" * 80)
-    print("Phase 5c regularization testing complete!")
+    print("Regularization study complete!")
     print("=" * 80)
 
     return 0

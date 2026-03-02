@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Test Phase 5b: Degree-Aware Correction.
+Degree-aware correction evaluation.
 
 This script implements correction models that learn from the difference between
 original graph and permutation 0 pathway counts, accounting for both degree
 features and pathway count magnitude.
 
 Usage:
-    python test_src/test_phase5b_degree_aware_correction.py
-    python test_src/test_phase5b_degree_aware_correction.py --metapath CtDaG
+    python test_src/degree_aware_correction_eval.py
+    python test_src/degree_aware_correction_eval.py --metapath CtDaG
 """
 
 import sys
@@ -118,9 +118,9 @@ def plot_correction_comparison(results_df, output_file):
 
 
 def main():
-    """Main Phase 5b degree-aware correction function."""
+    """Main degree-aware-correction-eval function."""
     parser = argparse.ArgumentParser(
-        description='Phase 5b: Degree-Aware Correction'
+        description='Degree-aware correction evaluation'
     )
     parser.add_argument(
         '--metapath',
@@ -153,7 +153,7 @@ def main():
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
-    print("Phase 5b: Degree-Aware Correction")
+    print("Degree-Aware Correction Evaluation")
     print("=" * 80)
     print(f"Metapath: {args.metapath}")
     print(f"Bins: {args.n_bins} x {args.n_bins}")
@@ -439,7 +439,7 @@ def main():
     print()
 
     print("=" * 80)
-    print("Phase 5b degree-aware correction complete!")
+    print("Degree-aware correction evaluation complete!")
     print("=" * 80)
 
     return 0

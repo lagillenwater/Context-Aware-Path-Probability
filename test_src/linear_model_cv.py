@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Test Phase 5: Bias Correction and Cross-Validation for Linear Regression.
+Linear-model cross-validation with bias correction.
 
 This script implements K-Fold CV on bins and tests bias-aware loss functions
 to eliminate systematic underprediction bias while maintaining high accuracy.
 
 Usage:
-    python test_src/test_phase5_linear_regression_cv.py
-    python test_src/test_phase5_linear_regression_cv.py --metapath CtDaG
+    python test_src/linear_model_cv.py
+    python test_src/linear_model_cv.py --metapath CtDaG
 """
 
 import sys
@@ -402,10 +402,10 @@ def plot_bias_comparison(bias_results, output_file):
 
 def main():
     """
-    Main Phase 5 function: CV and bias correction.
+    Main linear-model CV function.
     """
     parser = argparse.ArgumentParser(
-        description='Phase 5: Bias Correction and Cross-Validation'
+        description='Linear-model cross-validation with bias correction'
     )
     parser.add_argument(
         '--metapath',
@@ -444,7 +444,7 @@ def main():
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
-    print("Phase 5: Bias Correction and Cross-Validation")
+    print("Linear-Model CV: Bias Correction and Cross-Validation")
     print("=" * 80)
     print(f"Metapath: {args.metapath}")
     print(f"Bins: {args.n_bins} x {args.n_bins}")
@@ -742,7 +742,7 @@ def main():
     print()
 
     print("=" * 80)
-    print("Phase 5 complete!")
+    print("Linear-model CV complete!")
     print("=" * 80)
 
     return 0

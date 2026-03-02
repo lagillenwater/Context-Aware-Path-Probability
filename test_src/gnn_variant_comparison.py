@@ -16,7 +16,7 @@ Architecture:
 4. For each query pair (src, tgt): concatenate embeddings and predict count
 
 Usage:
-    python test_src/test_gnn_pathway_counts.py CbGpPW
+    python test_src/gnn_variant_comparison.py CbGpPW
 
 References:
     - docs/2025-11-11_NONLINEAR_MEAN_MODELS.md (current best: r=0.787)
@@ -28,14 +28,21 @@ import scipy.sparse as sp
 from pathlib import Path
 import sys
 import argparse
-import matplotlib.pyplot as plt
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import scipy.stats
 
 repo_dir = Path(__file__).parent.parent
+cache_dir = repo_dir / '.cache'
+mpl_cache_dir = cache_dir / 'matplotlib'
+mpl_cache_dir.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault('XDG_CACHE_HOME', str(cache_dir))
+os.environ.setdefault('MPLCONFIGDIR', str(mpl_cache_dir))
 sys.path.insert(0, str(repo_dir))
+
+import matplotlib.pyplot as plt
 
 from test_src.validate_mean_variance_prediction import (
     load_permuted_edge_matrices,
@@ -44,6 +51,65 @@ from test_src.validate_mean_variance_prediction import (
     compute_pathway_counts,
     evaluate_z_scores
 )
+
+
+def list_available_permutation_ids(data_dir):
+    """Return sorted available permutation IDs from data/permutations."""
+    perm_dir = data_dir / 'permutations'
+    if not perm_dir.exists():
+        return []
+    perm_ids = []
+    for child in perm_dir.glob('*.hetmat'):
+        try:
+            perm_ids.append(int(child.stem))
+        except ValueError:
+            continue
+    return sorted(set(perm_ids))
+
+
+def resolve_permutation_splits(available, train_perms=None, val_perms=None, test_perms=None):
+    """
+    Resolve train/val/test permutation splits.
+
+    If explicit splits are provided, validates them.
+    Otherwise uses canonical splits when available; falls back to local IDs.
+    """
+    if not available:
+        raise FileNotFoundError("No permutations found in data/permutations.")
+
+    if train_perms or val_perms or test_perms:
+        if not (train_perms and val_perms and test_perms):
+            raise ValueError(
+                "Provide all of --train-perms, --val-perms, and --test-perms, or none."
+            )
+        all_requested = [*train_perms, *val_perms, *test_perms]
+        missing = [perm for perm in all_requested if perm not in available]
+        if missing:
+            raise FileNotFoundError(f"Requested permutations missing: {sorted(set(missing))}")
+        return train_perms, val_perms, test_perms
+
+    canonical_train = [0, 1, 2, 3, 4]
+    canonical_val = [10, 11, 12, 13, 14]
+    canonical_test = [15, 16, 17, 18, 19, 20]
+    canonical_all = canonical_train + canonical_val + canonical_test
+    if all(perm in available for perm in canonical_all):
+        return canonical_train, canonical_val, canonical_test
+
+    train_count = min(5, max(1, len(available) - 2))
+    train = available[:train_count]
+    holdout = available[train_count:]
+    if not holdout:
+        holdout = available[-1:]
+    if len(holdout) == 1:
+        val = holdout
+        test = holdout
+    else:
+        split = max(1, len(holdout) // 2)
+        val = holdout[:split]
+        test = holdout[split:]
+        if not test:
+            test = val[-1:]
+    return train, val, test
 
 
 class SimpleGCNLayer(nn.Module):
@@ -254,7 +320,16 @@ def pairs_to_graph_indices(pairs, node_id_to_index):
     return torch.tensor(query_pairs, dtype=torch.long)
 
 
-def train_gnn(pairs, edge1_type, edge2_type, data_dir, n_samples=10000, random_state=42):
+def train_gnn(
+    pairs,
+    edge1_type,
+    edge2_type,
+    data_dir,
+    train_perms,
+    val_perms,
+    n_samples=10000,
+    random_state=42,
+):
     """
     Train GNN on permuted graphs to predict pathway counts.
 
@@ -272,12 +347,11 @@ def train_gnn(pairs, edge1_type, edge2_type, data_dir, n_samples=10000, random_s
     """
     print("Building graphs from permutations...")
 
-    train_perms = list(range(5))
-    val_perms = list(range(10, 15))
-
-    print("  Training permutations: 0-4")
-    print("  Building graph from perm 0 (shared structure across perms)...")
-    edge1_perm0, edge2_perm0 = load_permuted_edge_matrices(edge1_type, edge2_type, 0, data_dir)
+    base_perm = train_perms[0]
+    print(f"  Training permutations: {train_perms}")
+    print(f"  Validation permutations: {val_perms}")
+    print(f"  Building graph from perm {base_perm} (shared structure across perms)...")
+    edge1_perm0, edge2_perm0 = load_permuted_edge_matrices(edge1_type, edge2_type, base_perm, data_dir)
 
     node_features, edge_index, node_id_to_index, index_to_node_id = build_graph_from_edges(
         edge1_perm0, edge2_perm0
@@ -288,7 +362,7 @@ def train_gnn(pairs, edge1_type, edge2_type, data_dir, n_samples=10000, random_s
     print(f"  Graph: {node_features.shape[0]} nodes, {edge_index.shape[1]} edges")
     print(f"  Query pairs: {query_pairs.shape[0]}")
 
-    print("Computing training targets (mean of perms 0-4)...")
+    print(f"Computing training targets (mean of perms {train_perms})...")
     counts_train = []
     for perm in train_perms:
         edge1, edge2 = load_permuted_edge_matrices(edge1_type, edge2_type, perm, data_dir)
@@ -298,7 +372,7 @@ def train_gnn(pairs, edge1_type, edge2_type, data_dir, n_samples=10000, random_s
     mu_train = np.mean(counts_train, axis=1)
     mu_train_t = torch.FloatTensor(mu_train)
 
-    print("Computing validation targets (mean of perms 10-14)...")
+    print(f"Computing validation targets (mean of perms {val_perms})...")
     counts_val = []
     for perm in val_perms:
         edge1, edge2 = load_permuted_edge_matrices(edge1_type, edge2_type, perm, data_dir)
@@ -411,7 +485,7 @@ def analyze_embeddings(model, graph_data):
     }
 
 
-def evaluate_gnn(model, graph_data, pairs, edge1_type, edge2_type, data_dir):
+def evaluate_gnn(model, graph_data, pairs, edge1_type, edge2_type, data_dir, test_perms):
     """
     Evaluate GNN on test permutations.
 
@@ -426,15 +500,13 @@ def evaluate_gnn(model, graph_data, pairs, edge1_type, edge2_type, data_dir):
     Returns:
         results_df: DataFrame with test results
     """
-    test_perms = list(range(15, 21))
-
     node_features = graph_data['node_features']
     edge_index = graph_data['edge_index']
     query_pairs = graph_data['query_pairs']
 
     embedding_analysis = analyze_embeddings(model, graph_data)
 
-    print("\nEvaluating on test permutations 15-20...")
+    print(f"\nEvaluating on test permutations {test_perms}...")
 
     model.eval()
     with torch.no_grad():
@@ -461,7 +533,7 @@ def evaluate_gnn(model, graph_data, pairs, edge1_type, edge2_type, data_dir):
     results_df = pd.DataFrame(results)
 
     mean_r = results_df['r_mean'].mean()
-    print(f"\nTest Results (GNN on single perm 0):")
+    print(f"\nTest Results (GNN on single training permutation graph):")
     print(f"  Mean r across test perms: {mean_r:.4f}")
     print(f"  Comparison to baseline linear: 0.787")
     print(f"  Comparison to best (RF/Hetero NN): 0.778")
@@ -469,7 +541,16 @@ def evaluate_gnn(model, graph_data, pairs, edge1_type, edge2_type, data_dir):
     return results_df
 
 
-def train_gnn_multi_perm(pairs, edge1_type, edge2_type, data_dir, n_samples=10000, random_state=42):
+def train_gnn_multi_perm(
+    pairs,
+    edge1_type,
+    edge2_type,
+    data_dir,
+    train_perms,
+    val_perms,
+    n_samples=10000,
+    random_state=42,
+):
     """
     Train GNN on multiple permutations, aggregating embeddings.
 
@@ -493,10 +574,7 @@ def train_gnn_multi_perm(pairs, edge1_type, edge2_type, data_dir, n_samples=1000
         model: Trained GNN
         multi_perm_data: Data needed for evaluation
     """
-    print("Building graphs from training permutations 0-4...")
-
-    train_perms = list(range(5))
-    val_perms = list(range(10, 15))
+    print(f"Building graphs from training permutations {train_perms}...")
 
     graphs = []
     node_id_mappings = []
@@ -525,7 +603,7 @@ def train_gnn_multi_perm(pairs, edge1_type, edge2_type, data_dir, n_samples=1000
     print(f"  Query pairs: {query_pairs.shape[0]}")
     print(f"  Training on {len(graphs)} permutations")
 
-    print("Computing training targets (mean of perms 0-4)...")
+    print(f"Computing training targets (mean of perms {train_perms})...")
     counts_train = []
     for perm in train_perms:
         edge1, edge2 = load_permuted_edge_matrices(edge1_type, edge2_type, perm, data_dir)
@@ -535,7 +613,7 @@ def train_gnn_multi_perm(pairs, edge1_type, edge2_type, data_dir, n_samples=1000
     mu_train = np.mean(counts_train, axis=1)
     mu_train_t = torch.FloatTensor(mu_train)
 
-    print("Computing validation targets (mean of perms 10-14)...")
+    print(f"Computing validation targets (mean of perms {val_perms})...")
     counts_val = []
     for perm in val_perms:
         edge1, edge2 = load_permuted_edge_matrices(edge1_type, edge2_type, perm, data_dir)
@@ -656,7 +734,15 @@ def train_gnn_multi_perm(pairs, edge1_type, edge2_type, data_dir, n_samples=1000
     }
 
 
-def evaluate_gnn_multi_perm(model, multi_perm_data, pairs, edge1_type, edge2_type, data_dir):
+def evaluate_gnn_multi_perm(
+    model,
+    multi_perm_data,
+    pairs,
+    edge1_type,
+    edge2_type,
+    data_dir,
+    test_perms,
+):
     """
     Evaluate multi-permutation GNN on test set.
 
@@ -671,12 +757,10 @@ def evaluate_gnn_multi_perm(model, multi_perm_data, pairs, edge1_type, edge2_typ
     Returns:
         results_df: DataFrame with test results
     """
-    test_perms = list(range(15, 21))
-
     graphs = multi_perm_data['graphs']
     query_pairs = multi_perm_data['query_pairs']
 
-    print("\nEvaluating multi-perm GNN on test permutations 15-20...")
+    print(f"\nEvaluating multi-perm GNN on test permutations {test_perms}...")
 
     model.eval()
     with torch.no_grad():
@@ -738,6 +822,14 @@ def main():
                        help='Number of node pairs to sample')
     parser.add_argument('--random_state', type=int, default=42,
                        help='Random seed')
+    parser.add_argument('--train-perms', type=int, nargs='+', default=None,
+                       help='Explicit train permutation IDs')
+    parser.add_argument('--val-perms', type=int, nargs='+', default=None,
+                       help='Explicit validation permutation IDs')
+    parser.add_argument('--test-perms', type=int, nargs='+', default=None,
+                       help='Explicit test permutation IDs')
+    parser.add_argument('--smoke', action='store_true',
+                       help='Run with lighter settings for quick validation')
 
     args = parser.parse_args()
 
@@ -756,12 +848,27 @@ def main():
     output_dir = repo_dir / 'results' / 'gnn_pathway_counts'
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    if args.smoke:
+        args.n_samples = min(args.n_samples, 2000)
+
+    available = list_available_permutation_ids(data_dir)
+    train_perms, val_perms, test_perms = resolve_permutation_splits(
+        available,
+        train_perms=args.train_perms,
+        val_perms=args.val_perms,
+        test_perms=args.test_perms,
+    )
+
     print("="*70)
     print(f"GNN Pathway Count Prediction: {args.metapath}")
     print("="*70)
+    print(f"Train perms: {train_perms}")
+    print(f"Validation perms: {val_perms}")
+    print(f"Test perms: {test_perms}")
 
     print(f"\nSampling {args.n_samples} node pairs...")
-    edge1_perm0, edge2_perm0 = load_permuted_edge_matrices(edge1_type, edge2_type, 0, data_dir)
+    sample_perm = train_perms[0]
+    edge1_perm0, edge2_perm0 = load_permuted_edge_matrices(edge1_type, edge2_type, sample_perm, data_dir)
     pairs = sample_pairs(edge1_perm0, edge2_perm0, n_samples=args.n_samples,
                         random_state=args.random_state)
     print(f"  Sampled pairs: {len(pairs)}")
@@ -769,19 +876,25 @@ def main():
     if args.multi_perm:
         model, graph_data = train_gnn_multi_perm(
             pairs, edge1_type, edge2_type, data_dir,
+            train_perms=train_perms, val_perms=val_perms,
             n_samples=args.n_samples, random_state=args.random_state
         )
 
-        results_df = evaluate_gnn_multi_perm(model, graph_data, pairs, edge1_type, edge2_type, data_dir)
+        results_df = evaluate_gnn_multi_perm(
+            model, graph_data, pairs, edge1_type, edge2_type, data_dir, test_perms=test_perms
+        )
 
         output_file = output_dir / f'{args.metapath}_gnn_multi_perm.csv'
     else:
         model, graph_data = train_gnn(
             pairs, edge1_type, edge2_type, data_dir,
+            train_perms=train_perms, val_perms=val_perms,
             n_samples=args.n_samples, random_state=args.random_state
         )
 
-        results_df = evaluate_gnn(model, graph_data, pairs, edge1_type, edge2_type, data_dir)
+        results_df = evaluate_gnn(
+            model, graph_data, pairs, edge1_type, edge2_type, data_dir, test_perms=test_perms
+        )
 
         output_file = output_dir / f'{args.metapath}_gnn.csv'
 

@@ -2,6 +2,21 @@
 
 Reproducible pipelines for null-distribution and path-probability experiments on biomedical knowledge graphs (Hetionet permutations and related metapaths). This README is the single source for running everything end-to-end via Poetry + Poethepoet.
 
+## Figure Reproduction Commands (Start Here)
+```bash
+# Quick end-to-end validation (smoke-scale figures + model/comparison suite)
+poetry run poe quick-test-end-to-end
+
+# Full figure/diagnostic reproduction suite
+poetry run poe reproduce-figures-full
+```
+
+If using conda directly:
+```bash
+conda run -n CAPP poe quick-test-end-to-end
+conda run -n CAPP poe reproduce-figures-full
+```
+
 ## Environments
 
 You can use either Poetry or the existing conda environment. Pick one and stick with it for a session.
@@ -229,28 +244,32 @@ poetry run poe <task-name>     # run a task
     - `poe nn-architecture-exploration --tests 1,2 --max-samples 5000 --max-epochs-linear 5 --patience-linear 3 --skip-plots --no-save-pkl`
 
 ### Figures & diagnostics
-- `make-pathcount-heatmaps` – path-count variance figures
-- `assess-length-effects` – length degradation scripts
-- `assess-sparsity` – sparsity effects
-- `assess-topology` – topology/outlier diagnostics
+- `make-pathcount-heatmaps` – path-count variance figures (`results/path_count_visualization/`)
+- `assess-length-effects` – length degradation analysis (`results/length_degradation/`)
+- `assess-sparsity` – sparsity effects analysis (`results/hierarchical_prediction/`)
+- `assess-topology` – topology/outlier diagnostics (`results/topology_specific_outliers/`)
+- All four scripts support `--help` and `--smoke`, and automatically use available local permutations when higher IDs are missing.
 
-### Phase experiments
-- `run-phase1` – baseline pair-level
-- `run-phase2` – degree-aware corrections
-- `run-phase3` – feature/binning comparisons
-- `run-phase4` – control experiments
-- `run-phase5` – linear CV; variants:
-  - `run-phase5b-degree-aware`
-  - `run-phase5b-bias`
-  - `run-phase5b-theoretical`
-  - `run-phase5c-regularization`
-- `run-gnn-variants` – GNN/multitask tests
-- `test-composition-focused` – focused composition experiments
-- `compare-perm0` – perm000 vs perms comparison
+### Model and comparison analyses
+- `baseline-pair-level` – baseline pair-level
+- `pair-level-degree-correction` – degree-aware correction
+- `feature-comparison` – feature/binning comparisons
+- `control-experiments` – control experiments
+- `linear-model-cv` – linear CV
+- `degree-aware-correction-eval`
+- `bias-diagnostics`
+- `theoretical-correction-eval`
+- `regularization-study`
+- `gnn-variant-comparison` – GNN/multitask tests (defaults to `CbGpPW`)
+- `focused-composition-tests` – focused composition tests
+- `perm000-vs-permuted-comparison` – perm000 vs perms comparison (supports `--smoke`)
 
 ### Optional validation
 - `validate-dwpc` – DWPC p-value validation suite
-- `smoke-figures` – quick wiring check (small subsets)
+- `smoke-figures` – sequence task that runs smoke checks for all four figure/diagnostic scripts
+- `validate-figures` – runs `smoke-figures` plus `perm000-vs-permuted-comparison --smoke --skip-plots`
+- `quick-test-end-to-end` – smoke-scale end-to-end run across figures + model/comparison suite + focused composition
+- `reproduce-figures-full` – full figure/diagnostic/model-comparison reproduction suite
 
 ## Suggested end-to-end run
 ```bash
@@ -278,7 +297,7 @@ poetry run poe learned-analytical --edge-type CtD --n-candidates 2 3 5 --skip-co
 poetry run poe degree-conditioned-compositionality --metapath CbGpPW --perm-start 1 --perm-end 2 --max-pairs 5000 --skip-plots
 poetry run poe degree-aware-compositional-model --metapath CbGpPW --perm-start 1 --perm-end 2 --max-pairs 5000 --skip-plots
 poetry run poe nn-architecture-exploration --tests 1,2 --max-samples 5000 --max-epochs-linear 5 --patience-linear 3 --skip-plots --no-save-pkl
-# Figures / phases as needed
+# Figures / model-comparison analyses as needed
 ```
 
 ## Notes
@@ -292,4 +311,4 @@ poetry run poe nn-architecture-exploration --tests 1,2 --max-samples 5000 --max-
 - Null/compositional models trained
 - A2 model-comparison outputs generated (`model-comparison-analysis` + `model-testing-summary`)
 - A2 script-first notebook outputs generated (`pathway-data-preparation`, `pathway-train-random`, `pathway-train-degree-product`, `pathway-train-negbin-glm`, `pathway-train-random-forest`, `pathway-train-degree-signature-nn`, `pathway-variance-estimation`, `pathway-anomaly-detection`, `learned-analytical`, `degree-conditioned-compositionality`, `degree-aware-compositional-model`, `nn-architecture-exploration`)
-- Figures/phase scripts executed as needed
+- Figures/model-comparison scripts executed as needed

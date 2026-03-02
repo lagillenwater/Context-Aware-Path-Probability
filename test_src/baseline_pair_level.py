@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Phase 1: Baseline Pair-Level Model
+Baseline pair-level model.
 
 Train production model on 100,000 stratified pairs.
 Target: r > 0.85, |bias| < 0.01
@@ -20,6 +20,20 @@ sys.path.insert(0, str(repo_dir / 'src'))
 
 from pair_level_features import extract_features_for_pairs, extract_pair_targets
 from pair_level_sampling import load_and_sample_pairs
+
+
+def list_available_permutation_ids(data_dir: Path) -> list[int]:
+    """List available local permutation IDs from data/permutations."""
+    perm_dir = data_dir / 'permutations'
+    if not perm_dir.exists():
+        return []
+    perm_ids = []
+    for child in perm_dir.glob('*.hetmat'):
+        try:
+            perm_ids.append(int(child.stem))
+        except ValueError:
+            continue
+    return sorted(set(perm_ids))
 
 
 def compute_average_across_permutations(
@@ -70,7 +84,7 @@ def compute_average_across_permutations(
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Phase 1: Baseline pair-level model'
+        description='Baseline pair-level model'
     )
     parser.add_argument(
         '--metapath',
@@ -120,7 +134,7 @@ def main():
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
-    print("Phase 1: Baseline Pair-Level Model")
+    print("Baseline Pair-Level Model")
     print("=" * 80)
     print()
     print(f"Metapath: {args.metapath} ({edge1_type} -> {edge2_type})")
@@ -157,7 +171,19 @@ def main():
     # Step 3: Compute targets (average pathway counts across permutations)
     print("Step 3: Computing targets...")
     step_start = time.time()
-    perm_ids = list(range(1, args.n_permutations + 1))
+    available_perm_ids = [perm_id for perm_id in list_available_permutation_ids(data_dir) if perm_id > 0]
+    if not available_perm_ids:
+        raise FileNotFoundError(
+            f"No non-zero permutations found in {data_dir / 'permutations'}; "
+            "phase 1 requires at least one null permutation."
+        )
+    if args.n_permutations > len(available_perm_ids):
+        print(
+            f"  Requested {args.n_permutations} permutations, but only "
+            f"{len(available_perm_ids)} are available. Using available set."
+        )
+    perm_ids = available_perm_ids[: min(args.n_permutations, len(available_perm_ids))]
+    print(f"  Using permutation IDs: {perm_ids}")
     y, y_variance = compute_average_across_permutations(
         edge1_type, edge2_type, pair_indices, perm_ids, data_dir
     )
@@ -280,7 +306,8 @@ def main():
             'edge2_type': edge2_type,
             'feature_set': args.feature_set,
             'n_samples': args.n_samples,
-            'n_permutations': args.n_permutations,
+            'n_permutations': len(perm_ids),
+            'permutation_ids': perm_ids,
             'train_r': train_r,
             'test_r': test_r,
             'test_rmse': test_rmse,
@@ -304,10 +331,10 @@ def main():
 
     if test_r > 0.90 and abs(test_bias) < 0.01:
         print("✓✓ EXCELLENT - Exceeds target (r > 0.90)")
-        print("  Ready for Phase 2 (degree-aware correction)")
+        print("  Ready for pair-level degree correction")
     elif test_r > 0.85 and abs(test_bias) < 0.01:
         print("✓ PASS - Meets target")
-        print("  Ready for Phase 2 (degree-aware correction)")
+        print("  Ready for pair-level degree correction")
     elif test_r > 0.85:
         print("⚠ MARGINAL - Good correlation but bias too high")
         print(f"  Bias = {test_bias:.6f} exceeds threshold (0.01)")
