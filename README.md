@@ -21,6 +21,50 @@ conda run -n CAPP poe reproduce-figures-full
 conda run -n CAPP poe ci-smoke
 ```
 
+## Manuscript Figure Reproduction (Current Script-Backed Set)
+
+This is the canonical, script-backed set currently implemented for manuscript draft reproduction.
+
+Prerequisites:
+- Run from repo root with `CAPP` active.
+- Ensure permutations exist under `data/permutations/` (for manuscript-faithful runs, keep `000-020` available).
+
+Run all currently implemented manuscript repro tasks:
+```bash
+poe repro-script-backed
+```
+
+Run in manuscript order (script-backed subset):
+```bash
+poe repro-manuscript-v1
+```
+
+Individual commands and outputs:
+- Figure 2 (`CbGpPWpG` heatmap):
+  - Command: `poe repro-fig2-pathcount-heatmap`
+  - Output: `results/path_count_visualization/CbGpPWpG_path_count_heatmap.png`
+- Figure 3 (model failures):
+  - Command: `poe repro-fig3-model-failures`
+  - Output: `results/model_failures/model_failure_analysis.png`
+- Figure 4 (permutation similarity):
+  - Command: `poe repro-fig4-permutation-similarity`
+  - Output: `results/permuations_similarlity/AeG_permutation_similarity.png`
+- Figure 13 (variance vs PMI):
+  - Command: `poe repro-fig13-variance-pmi`
+  - Output dir: `results/variance_pmi/`
+- Figure 14 (perm0 vs perm-mean topology outliers):
+  - Command: `poe repro-fig14-topology-outliers`
+  - Output dir: `results/topology_specific_outliers/`
+- Table 1 (count prediction performance):
+  - Command: `poe repro-table1-count-prediction`
+  - Output: `results/model_comparison/table1_count_prediction.csv`
+- Figure 15:
+  - Command: `poe repro-fig3-model-failures` (same backend/output as Figure 3)
+  - Output: `results/model_failures/model_failure_analysis.png`
+- Figure 16 (z-score + QQ calibration):
+  - Command: `poe repro-fig16-zscore-qq`
+  - Output dir: `results/model_comparison/qq_and_zscore/`
+
 ## Environment (Canonical)
 
 Track A now assumes a single runtime path: `conda` environment `CAPP` plus `poe` tasks.
